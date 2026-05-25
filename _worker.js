@@ -5,11 +5,13 @@ export default {
 
     if (!contentType.includes('text/html')) return asset;
 
-    const apiBase = env.SIX_SEVEN_API_BASE || '';
+    const apiBase = env.SIX_SEVEN_API_BASE || 'https://six-seven-api.onrender.com';
     let html = await asset.text();
     if (!html.includes('api-client.js')) {
       const injection = `<script>window.SIX_SEVEN_API_BASE=${JSON.stringify(apiBase)};</script>\n  <script src="api-client.js"></script>`;
       html = html.replace('<script src="app.js"></script>', `${injection}\n  <script src="app.js"></script>`);
+    } else {
+      html = html.replace(/<script>window\.SIX_SEVEN_API_BASE=.*?<\/script>/, `<script>window.SIX_SEVEN_API_BASE=${JSON.stringify(apiBase)};</script>`);
     }
     if (!html.includes('battle-performance.css')) {
       html = html.replace('</head>', '  <link rel="stylesheet" href="battle-performance.css" />\n</head>');
