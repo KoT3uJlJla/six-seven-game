@@ -14,6 +14,19 @@
     window.dispatchEvent(new CustomEvent('six-seven:api-status', { detail: payload }));
   }
 
+  async function healthPing() {
+    try {
+      mark('health-start');
+      const res = await fetch(API_BASE + '/api/health', { method: 'GET', cache: 'no-store' });
+      const data = await res.json().catch(function () { return {}; });
+      mark(res.ok ? 'health-ok' : 'health-error', JSON.stringify(data).slice(0, 180));
+      return res.ok;
+    } catch (err) {
+      mark('health-failed', err.message || 'network error');
+      return false;
+    }
+  }
+
   function getLocalState() {
     try { return JSON.parse(localStorage.getItem(STORE_KEY) || '{}'); } catch { return {}; }
   }
@@ -39,7 +52,7 @@
   async function request(path, opts) {
     const headers = Object.assign({ 'Content-Type': 'application/json' }, (opts && opts.headers) || {});
     if (state.token) headers.Authorization = 'Bearer ' + state.token;
-    const res = await fetch(API_BASE + path, Object.assign({}, opts || {}, { headers }));
+    const res = await fetch(API_BASE + path, Object.assign({}, opts || {}, { headers, cache: 'no-store' }));
     const data = await res.json().catch(function () { return {}; });
     if (!res.ok) throw new Error(data.error || ('API ' + res.status));
     return data;
@@ -86,6 +99,7 @@
     let attempts = 0;
     const run = async () => {
       attempts += 1;
+      await healthPing();
       const ok = await bootstrap();
       if (ok || attempts >= 20) return;
       setTimeout(run, 500);
@@ -113,7 +127,9 @@
       console.warn('[api] match sync failed:', err.message);
     }
   }
-  window.SixSevenAPI = { request, bootstrap, bootstrapWithRetry, syncMatch, get token() { return state.token; }, get ready() { return state.ready; }, get me() { return state.me; }, get lastError() { return state.lastError; }, apiBase: API_BASE };
+  window.SixSevenAPI = { request, bootstrap, bootstrapWithRetry, healthPing, syncMatch, get token() { return state.token; }, get ready() { return state.ready; }, get me() { return state.me; }, get lastError() { return state.lastError; }, apiBase: API_BASE };
+  mark('loaded');
+  healthPing();
   document.addEventListener('DOMContentLoaded', function () {
     bootstrapWithRetry();
     new MutationObserver(function () { syncMatch(); }).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden'] });
