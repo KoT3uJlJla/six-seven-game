@@ -1,0 +1,8 @@
+:root{--battle-perf:1}
+.bg-particles,.bg-noise,.battle__ambient,.battle__speedlines,.battle__flash{display:none!important}
+.battle__stage{filter:none!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;contain:layout paint style!important;box-shadow:none!important}
+.tap-zone::before,.tap-zone::after{display:none!important}
+.particle,.confetti-piece,.chaos-sticker{display:none!important;animation:none!important}
+.battle__hand,.battle__digit,.floater{filter:none!important;will-change:transform,opacity!important;transform:translateZ(0)}
+.battle__combo,.battle__meme{box-shadow:0 8px 14px rgba(17,17,40,.16)!important;filter:none!important}
+.sixty-seven-jackpot__confetti,.sixty-seven-jackpot__word{display:none!important}
