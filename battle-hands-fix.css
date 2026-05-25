@@ -1,11 +1,16 @@
-/* Battle hands mirror fix. Left and right hands must face each other. */
-.battle__hand--left{transform:scaleX(-1)!important;transform-origin:50% 88%!important}
-.battle__hand--right{transform:scaleX(1)!important;transform-origin:50% 88%!important}
-.battle__hand--left.is-tap{animation:battle-hand-left-tap-lite .16s ease-out!important}
-.battle__hand--right.is-tap{animation:battle-hand-right-tap-lite .16s ease-out!important}
-@keyframes battle-hand-left-tap-lite{0%{transform:scaleX(-1) translateY(0)}50%{transform:scaleX(-1) translateY(-28px)}100%{transform:scaleX(-1) translateY(0)}}
-@keyframes battle-hand-right-tap-lite{0%{transform:scaleX(1) translateY(0)}50%{transform:scaleX(1) translateY(-28px)}100%{transform:scaleX(1) translateY(0)}}
-.battle-hard-perf .battle__hand--left.is-tap{animation:battle-hand-left-tap-lite .12s ease-out!important}
-.battle-hard-perf .battle__hand--right.is-tap{animation:battle-hand-right-tap-lite .12s ease-out!important}
-.battle-hard-perf .floater--lite{font-size:20px!important;filter:none!important;text-shadow:none!important;animation:floater-lite .42s ease-out forwards!important}
-@keyframes floater-lite{from{opacity:1;transform:translate3d(0,0,0) rotate(var(--r,0deg)) scale(1)}to{opacity:0;transform:translate3d(0,-34px,0) rotate(var(--r,0deg)) scale(1.05)}}
+/* Battle hands mirror + spacing + cheap vertical tap animation. */
+.battle__hands{overflow:hidden!important;contain:layout paint style!important}
+.battle__hand{width:48%!important;max-width:220px!important;bottom:-8%!important;filter:none!important;will-change:transform!important;transition:none!important;transform-origin:50% 96%!important}
+.battle__hand--left{left:-15%!important;right:auto!important;transform:translate3d(0,0,0) rotate(-4deg) scaleX(-1)!important}
+.battle__hand--right{right:-15%!important;left:auto!important;transform:translate3d(0,0,0) rotate(4deg) scaleX(1)!important}
+.battle__hand--left.is-tap,.battle__hand--left.is-lite-left-tap{animation:battle-left-updown .11s ease-out!important}
+.battle__hand--right.is-tap,.battle__hand--right.is-lite-right-tap{animation:battle-right-updown .11s ease-out!important}
+@keyframes battle-left-updown{0%{transform:translate3d(0,0,0) rotate(-4deg) scaleX(-1)}55%{transform:translate3d(0,-34px,0) rotate(-4deg) scaleX(-1)}100%{transform:translate3d(0,0,0) rotate(-4deg) scaleX(-1)}}
+@keyframes battle-right-updown{0%{transform:translate3d(0,0,0) rotate(4deg) scaleX(1)}55%{transform:translate3d(0,-34px,0) rotate(4deg) scaleX(1)}100%{transform:translate3d(0,0,0) rotate(4deg) scaleX(1)}}
+.battle-hard-perf .battle__hand--left.is-tap,.battle-hard-perf .battle__hand--left.is-lite-left-tap{animation:battle-left-updown .095s ease-out!important}
+.battle-hard-perf .battle__hand--right.is-tap,.battle-hard-perf .battle__hand--right.is-lite-right-tap{animation:battle-right-updown .095s ease-out!important}
+.battle-lite-engine .battle__digit{filter:none!important;transition:none!important}
+.battle-lite-engine .battle__digit.is-pop{transform:translate(-50%,-50%)!important}
+.battle-lite-engine .floater--lite{font-size:18px!important;filter:none!important;text-shadow:none!important;animation:floater-lite .30s ease-out forwards!important}
+@keyframes floater-lite{from{opacity:.9;transform:translate3d(0,0,0) rotate(var(--r,0deg)) scale(.95)}to{opacity:0;transform:translate3d(0,-24px,0) rotate(var(--r,0deg)) scale(1)}}
+@media (max-width:390px){.battle__hand{width:46%!important;max-width:190px!important}.battle__hand--left{left:-18%!important}.battle__hand--right{right:-18%!important}}
