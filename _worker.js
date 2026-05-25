@@ -23,6 +23,9 @@ export default {
     if (!html.includes('battle-performance-hard.js')) {
       html = html.replace('</body>', '  <script src="battle-performance-hard.js"></script>\n</body>');
     }
+    if (!html.includes('battle-lite-engine.js')) {
+      html = html.replace('</body>', '  <script src="battle-lite-engine.js"></script>\n</body>');
+    }
     return new Response(html, {
       status: asset.status,
       headers: {
