@@ -12,6 +12,9 @@
   var botTimer = null;
   var leftTapTimer = null;
   var rightTapTimer = null;
+  var timerInterval = null;
+  var endTimer = null;
+  var lastFloater = 0;
 
   function byId(id){ return document.getElementById(id); }
   function sideNow(){ try { return Number(state && state.side) === 7 ? 7 : 6; } catch(e) { return 6; } }
@@ -23,7 +26,7 @@
 
   function liteHaptic(){
     var t = performance.now();
-    if (t - lastHaptic < 75) return;
+    if (t - lastHaptic < 120) return;
     lastHaptic = t;
     try { haptic.light(); } catch(e) {}
   }
@@ -35,7 +38,7 @@
     var timer = side === 6 ? leftTapTimer : rightTapTimer;
     clearTimeout(timer);
     el.classList.add(cls);
-    var next = setTimeout(function(){ el.classList.remove(cls); }, 95);
+    var next = setTimeout(function(){ el.classList.remove(cls); }, 76);
     if (side === 6) leftTapTimer = next;
     else rightTapTimer = next;
   }
@@ -58,6 +61,9 @@
   }
 
   function liteFloater(side){
+    var now = performance.now();
+    if (now - lastFloater < 520) return;
+    lastFloater = now;
     var l = byId('battle-floaters');
     if (!l) return;
     l.replaceChildren();
@@ -65,11 +71,11 @@
     f.className = 'floater floater--lite';
     f.dataset.side = side;
     f.textContent = side === 6 ? 'SIX!' : 'SEVEN!';
-    f.style.left = side === 6 ? '28%' : '66%';
+    f.style.left = side === 6 ? '29%' : '65%';
     f.style.top = '40%';
     f.style.setProperty('--r', side === 6 ? '-3deg' : '3deg');
     l.appendChild(f);
-    setTimeout(function(){ if (f.parentNode) f.remove(); }, 320);
+    setTimeout(function(){ if (f.parentNode) f.remove(); }, 280);
   }
 
   window.spawnFloaterForSide = liteFloater;
@@ -103,7 +109,7 @@
       scoreText('me-score', BATTLE.myScore);
       var s = sideNow();
       liteHand(s);
-      if (BATTLE.myScore % 4 === 0) liteFloater(s);
+      if (BATTLE.myScore % 8 === 0) liteFloater(s);
       updateBars();
     } catch(err) {}
   }
@@ -117,15 +123,51 @@
         if (BATTLE.acceptingTaps) {
           BATTLE.enemyScore += 1;
           scoreText('enemy-score', BATTLE.enemyScore);
-          liteHand(enemySideNow());
+          if (BATTLE.enemyScore % 3 === 0) liteHand(enemySideNow());
           updateBars();
         }
         liteBot();
-      }, 135 + Math.random() * 95);
+      }, 190 + Math.random() * 120);
       BATTLE.enemyBot = botTimer;
     } catch(e) {}
   }
   window.scheduleBotTap = liteBot;
+
+  window.startBattleTimer = function(){
+    clearInterval(timerInterval);
+    clearTimeout(endTimer);
+    clearFx();
+    try {
+      BATTLE.startTs = Date.now();
+      BATTLE.acceptingTaps = true;
+      var tNum = byId('timer-num');
+      var tFg = byId('timer-fg');
+      var CIRC = 2 * Math.PI * 44;
+      if (tFg) {
+        tFg.setAttribute('stroke-dasharray', CIRC.toFixed(2));
+        tFg.style.strokeDashoffset = '0';
+      }
+      var tapHint = document.querySelector('.tap-zone__hint');
+      if (tapHint) tapHint.textContent = (window.t ? t('battle.tapLive') : 'TAP TAP TAP');
+      var stage = byId('battle-stage');
+      if (stage) stage.classList.add('is-playing');
+      liteBot();
+      timerInterval = setInterval(function(){
+        if (!BATTLE.running) { clearInterval(timerInterval); return; }
+        var elapsed = Date.now() - BATTLE.startTs;
+        var remain = Math.max(0, BATTLE.duration - elapsed);
+        if (tNum) tNum.textContent = (remain / 1000).toFixed(1);
+        if (tFg) {
+          var frac = remain / BATTLE.duration;
+          tFg.style.strokeDashoffset = (CIRC * (1 - frac)).toFixed(2);
+        }
+        if (remain <= 0 && typeof endBattle === 'function') endBattle();
+      }, 120);
+      BATTLE.tickInterval = timerInterval;
+      endTimer = setTimeout(function(){ if (typeof endBattle === 'function') endBattle(); }, BATTLE.duration + 40);
+      BATTLE.endTimeout = endTimer;
+    } catch(e) {}
+  };
 
   function bindLiteHandlers(){
     var tap = byId('tap-zone');
@@ -139,6 +181,10 @@
   document.addEventListener('DOMContentLoaded', bindLiteHandlers);
   setInterval(function(){
     bindLiteHandlers();
-    if (!stageVisible()) clearFx();
-  }, 700);
+    if (!stageVisible()) {
+      clearFx();
+      clearInterval(timerInterval);
+      clearTimeout(endTimer);
+    }
+  }, 900);
 })();
