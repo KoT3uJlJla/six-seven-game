@@ -1,9 +1,8 @@
-/* Six Seven API bridge. Set window.SIX_SEVEN_API_BASE before loading this file. */
+/* Six Seven API bridge. Works with Cloudflare env or built-in production fallback. */
 (function () {
-  const API_BASE = String(window.SIX_SEVEN_API_BASE || '').replace(/\/$/, '');
+  const API_BASE = String(window.SIX_SEVEN_API_BASE || 'https://six-seven-api.onrender.com').replace(/\/$/, '');
   const TOKEN_KEY = 'six-seven::api-token';
   const STORE_KEY = 'six-seven::state-v1';
-  if (!API_BASE) return;
 
   const tg = window.Telegram && window.Telegram.WebApp;
   const state = { token: localStorage.getItem(TOKEN_KEY) || '', ready: false, me: null };
@@ -47,7 +46,10 @@
   async function bootstrap() {
     try {
       const initData = (tg && tg.initData) || '';
-      if (!initData) return;
+      if (!initData) {
+        console.warn('[api] Telegram initData is empty. Open from mobile Telegram, not browser preview.');
+        return;
+      }
       const local = getLocalState();
       const sp = startParam();
       const data = await request('/api/auth/telegram', { method: 'POST', body: JSON.stringify({ initData, side: local.side, refCode: sp.refCode, guildId: sp.guildId }) });
@@ -56,7 +58,12 @@
       setLocalState(data.user);
       state.ready = true;
       window.dispatchEvent(new CustomEvent('six-seven:api-ready', { detail: data.user }));
-    } catch (err) { console.warn('[api] bootstrap failed:', err.message); }
+      console.info('[api] ready', data.user && data.user.telegramId);
+    } catch (err) {
+      state.ready = false;
+      console.warn('[api] bootstrap failed:', err.message);
+      window.dispatchEvent(new CustomEvent('six-seven:api-error', { detail: err.message }));
+    }
   }
   async function syncMatch() {
     if (!state.ready) return;
@@ -75,7 +82,7 @@
       window.dispatchEvent(new CustomEvent('six-seven:server-match-synced', { detail: data }));
     } catch (err) { console.warn('[api] match sync failed:', err.message); }
   }
-  window.SixSevenAPI = { request, bootstrap, syncMatch, get ready() { return state.ready; }, get me() { return state.me; } };
+  window.SixSevenAPI = { request, bootstrap, syncMatch, get token() { return state.token; }, get ready() { return state.ready; }, get me() { return state.me; }, apiBase: API_BASE };
   document.addEventListener('DOMContentLoaded', function () {
     bootstrap();
     new MutationObserver(function () { syncMatch(); }).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden'] });
