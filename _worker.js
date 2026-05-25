@@ -14,8 +14,14 @@ export default {
     if (!html.includes('battle-performance.css')) {
       html = html.replace('</head>', '  <link rel="stylesheet" href="battle-performance.css" />\n</head>');
     }
+    if (!html.includes('battle-hands-fix.css')) {
+      html = html.replace('</head>', '  <link rel="stylesheet" href="battle-hands-fix.css" />\n</head>');
+    }
     if (!html.includes('desktop-guard-hard.js')) {
       html = html.replace('</body>', '  <script src="desktop-guard-hard.js"></script>\n</body>');
+    }
+    if (!html.includes('battle-performance-hard.js')) {
+      html = html.replace('</body>', '  <script src="battle-performance-hard.js"></script>\n</body>');
     }
     return new Response(html, {
       status: asset.status,
