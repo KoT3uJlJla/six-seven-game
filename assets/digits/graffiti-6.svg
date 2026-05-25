@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 240" width="200" height="240">
+  <defs>
+    <linearGradient id="gfx6g" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#00ff96"/>
+      <stop offset="100%" stop-color="#00b85e"/>
+    </linearGradient>
+    <filter id="gfxShadow6" x="-20%" y="-20%" width="140%" height="160%">
+      <feDropShadow dx="3" dy="3" stdDeviation="0" flood-color="#003d22"/>
+      <feDropShadow dx="0" dy="8" stdDeviation="8" flood-color="#00d27a" flood-opacity="0.5"/>
+    </filter>
+  </defs>
+  <g filter="url(#gfxShadow6)" transform="rotate(-8 100 130)">
+    <!-- drips -->
+    <ellipse cx="58" cy="210" rx="8" ry="14" fill="url(#gfx6g)" stroke="#0c0d18" stroke-width="3"/>
+    <ellipse cx="140" cy="216" rx="6" ry="12" fill="url(#gfx6g)" stroke="#0c0d18" stroke-width="3"/>
+    <text x="100" y="180"
+          font-family="Bungee, 'Arial Black', sans-serif"
+          font-size="200"
+          font-weight="900"
+          text-anchor="middle"
+          fill="url(#gfx6g)"
+          stroke="#0c0d18"
+          stroke-width="8"
+          paint-order="stroke">6</text>
+    <!-- highlight -->
+    <text x="100" y="180"
+          font-family="Bungee, 'Arial Black', sans-serif"
+          font-size="200"
+          font-weight="900"
+          text-anchor="middle"
+          fill="none"
+          stroke="#ffffff"
+          stroke-width="2"
+          stroke-dasharray="40 200"
+          paint-order="stroke">6</text>
+  </g>
+</svg>
