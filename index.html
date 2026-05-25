@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#0a0a14" />
+  <title>67 — Pick a Side</title>
+
+  <!-- Telegram Mini App SDK -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+  <!-- Fonts: bold display + clean body -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bungee:wght@400&family=Space+Grotesk:wght@400;500;600;700&family=Archivo+Black&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- BG: animated holographic mesh + grid + ghost digits + sparks -->
+  <div class="bg-layer" aria-hidden="true">
+    <div class="bg-mesh"></div>
+    <div class="bg-grid"></div>
+    <div class="bg-ghosts">
+      <span class="bg-ghost bg-ghost--1">6</span>
+      <span class="bg-ghost bg-ghost--2">7</span>
+      <span class="bg-ghost bg-ghost--3">6</span>
+      <span class="bg-ghost bg-ghost--4">7</span>
+    </div>
+    <div class="bg-particles">
+      <span class="bg-particle bg-particle--1" style="--dur:7s;--delay:0s;--r:-8deg">✦</span>
+      <span class="bg-particle bg-particle--2" style="--dur:9s;--delay:1.5s;--r:14deg">⚡</span>
+      <span class="bg-particle bg-particle--3" style="--dur:8s;--delay:3s;--r:-12deg">★</span>
+      <span class="bg-particle bg-particle--4" style="--dur:10s;--delay:0.6s;--r:18deg">✦</span>
+      <span class="bg-particle bg-particle--5" style="--dur:8.5s;--delay:2.2s;--r:-16deg">⚡</span>
+      <span class="bg-particle bg-particle--6" style="--dur:9.5s;--delay:4.4s;--r:6deg">★</span>
+      <span class="bg-particle bg-particle--7" style="--dur:7.5s;--delay:1s;--r:-4deg">✦</span>
+      <span class="bg-particle bg-particle--8" style="--dur:10.5s;--delay:3.6s;--r:22deg">⚡</span>
+    </div>
+    <div class="bg-noise"></div>
+  </div>
+
+  <!-- DESKTOP GUARD -->
+  <section class="desktop-guard" id="desktop-guard" hidden aria-live="polite">
+    <div class="desktop-guard__card">
+      <div class="desktop-guard__badge">📱 ONLY</div>
+      <div class="desktop-guard__hands" aria-hidden="true">
+        <span>6</span>
+        <b>VS</b>
+        <span>7</span>
+      </div>
+      <h1 id="desktop-guard-title">PLAY FROM YOUR PHONE</h1>
+      <p id="desktop-guard-text">This brainrot battle works only on mobile Telegram. Open the game from your phone to keep tapping.</p>
+      <div class="desktop-guard__qr-note" id="desktop-guard-note">Desktop detected. Send this Mini App to yourself and open it on iOS or Android.</div>
+    </div>
+  </section>
+
+  <!-- APP SHELL -->
+  <div id="app">
+
+    <!-- ============ SCREEN: HOME ============ -->
+    <section class="screen screen--home" data-screen="home">
+      <header class="topbar">
+        <button class="topbar__user topbar__user-btn" id="open-profile-top" type="button" aria-label="Open profile">
+          <div class="avatar">
+            <span class="avatar__emoji">😎</span>
+            <span class="avatar__lvl" id="user-level">L1</span>
+          </div>
+          <div class="topbar__meta">
+            <div class="topbar__name" id="user-name">Alpha67</div>
+            <div class="topbar__rank" id="user-rank">Recruit</div>
+          </div>
+        </button>
+        <button class="topbar__coins topbar__coins-btn topbar__shop-btn" id="open-shop-top" type="button" aria-label="Open shop">
+          <span class="topbar__shop-icon">🛒</span>
+          <span class="topbar__shop-text" data-i18n="topbar.shop">SHOP</span>
+          <span class="topbar__coin-wrap"><span class="coin-icon">🪙</span><span id="user-coins">0</span></span>
+        </button>
+      </header>
+
+      <div class="hero">
+        <div class="hero__sparks" aria-hidden="true">
+          <span class="spark spark--1">✦</span>
+          <span class="spark spark--2">★</span>
+          <span class="spark spark--3">⚡</span>
+          <span class="spark spark--4">✦</span>
+          <span class="spark spark--5">★</span>
+        </div>
+
+        <div class="hero__digits">
+          <img class="digit-img digit-img--six" id="hero-digit-6" src="assets/digits/classic-6.png" alt="6" />
+          <div class="hero__or" data-i18n="hero.or">OR</div>
+          <img class="digit-img digit-img--seven" id="hero-digit-7" src="assets/digits/classic-7.png" alt="7" />
+        </div>
+
+        <div class="hero__hands">
+          <img class="hero__hand hero__hand--left" id="hero-hand-left" src="assets/hand.png" alt="" />
+          <img class="hero__hand hero__hand--right" id="hero-hand-right" src="assets/hand.png" alt="" />
+        </div>
+
+        <div class="hero__tag" data-i18n="hero.tag">PICK A SIDE. TAP TO WIN.</div>
+      </div>
+
+      <div class="side-picker">
+        <button class="side-btn side-btn--six" data-side="6" aria-label="Choose 6">
+          <span class="side-btn__label" data-i18n="side.im6">I'M&nbsp;6</span>
+          <span class="side-btn__icon">✌️</span>
+        </button>
+        <button class="side-btn side-btn--seven" data-side="7" aria-label="Choose 7">
+          <span class="side-btn__icon">✌️</span>
+          <span class="side-btn__label" data-i18n="side.im7">I'M&nbsp;7</span>
+        </button>
+      </div>
+
+
+      <button class="home-battle-cta" id="home-battle-cta" type="button" data-side="6" aria-label="Start battle">
+        <span class="home-battle-cta__mini" data-i18n="cta.ready">READY?</span>
+        <span class="home-battle-cta__main"><span data-i18n="cta.fightFor">FIGHT FOR</span> <b id="home-battle-side">6</b></span>
+        <span class="home-battle-cta__sub" data-i18n="cta.sub">6.7 SEC • TAP FAST</span>
+      </button>
+      <div class="home-battle-hint" data-i18n="cta.tapHere">👆 TAP HERE 👆</div>
+
+      <div class="ref-card" id="ref-card">
+        <div class="ref-card__top">
+          <div>
+            <div class="ref-card__eyebrow" data-i18n="ref.eyebrow">5-LEVEL REF WAR</div>
+            <div class="ref-card__title" id="ref-title">SCOUT</div>
+          </div>
+          <div class="ref-card__count"><b id="ref-count">0</b><span data-i18n="ref.countLabel">REFS</span></div>
+        </div>
+        <div class="ref-card__progress" aria-hidden="true"><span id="ref-progress"></span></div>
+        <div class="ref-card__meta" id="ref-meta">1 ref to next level</div>
+        <div class="ref-card__tiers" id="ref-tiers" aria-label="Referral tiers"></div>
+        <button class="ref-card__cta" id="ref-invite" type="button" data-i18n="ref.invite">INVITE GANG</button>
+        <div class="ref-card__foot" data-i18n="ref.firstTouch">FIRST INVITER OWNS THE CROWD.</div>
+      </div>
+
+      <div class="guild-card" id="guild-card" data-state="empty">
+        <div class="guild-card__top">
+          <div>
+            <div class="guild-card__eyebrow" data-i18n="guild.eyebrow">GUILD WAR</div>
+            <div class="guild-card__title" id="guild-title">NO GUILD</div>
+          </div>
+          <div class="guild-card__badge" id="guild-badge">G</div>
+        </div>
+        <div class="guild-card__meta" id="guild-meta">Create a guild or join one from Top.</div>
+        <div class="guild-card__stats" id="guild-stats">
+          <span><b id="guild-score">0</b><small data-i18n="guild.score">SCORE</small></span>
+          <span><b id="guild-members">0</b><small data-i18n="guild.members">MEMBERS</small></span>
+          <span><b id="guild-reward">0</b><small data-i18n="guild.reward">REWARD</small></span>
+        </div>
+        <div class="guild-card__reward" id="guild-reward-line">Weekly guild rewards unlock after loyalty lock.</div>
+        <div class="guild-card__actions">
+          <button class="guild-card__cta guild-card__cta--primary" id="guild-create" type="button" data-i18n="guild.create">CREATE GUILD</button>
+          <button class="guild-card__cta" id="guild-invite" type="button" data-i18n="guild.invite">INVITE</button>
+          <button class="guild-card__cta" id="guild-random" type="button" data-i18n="guild.joinRandom">JOIN RANDOM</button>
+          <button class="guild-card__cta guild-card__cta--danger" id="guild-leave" type="button" data-i18n="guild.leave">LEAVE</button>
+        </div>
+        <div class="guild-card__lock" id="guild-lock" hidden></div>
+      </div>
+
+      <div class="daily-curse" id="daily-curse" aria-live="polite">
+        <span class="daily-curse__label" data-i18n="curse.label">TODAY'S CURSE</span>
+        <b id="daily-curse-text">6 HAS NO AURA</b>
+      </div>
+
+      <div class="challenge-card" id="challenge-card" hidden>
+        <div class="challenge-card__eyebrow" data-i18n="challenge.incoming">INCOMING SHAME LINK</div>
+        <div class="challenge-card__title" id="challenge-title">6 GANG CALLED YOU OUT</div>
+        <div class="challenge-card__meta" id="challenge-meta">Beat 0 taps in 6.7 sec</div>
+        <button class="challenge-card__cta" id="challenge-accept" type="button">DEFEND YOUR SIDE</button>
+      </div>
+
+      <div class="chat-war-card" id="chat-war-card" hidden>
+        <div class="chat-war-card__top">
+          <span class="chat-war-card__label" id="chat-war-label">TELEGRAM CHAT WAR</span>
+          <span class="chat-war-card__verdict" id="chat-war-verdict">INVITE A CHAT</span>
+        </div>
+        <div class="chat-war-card__bar">
+          <div class="chat-war-card__six" id="chat-war-six" style="width:50%"></div>
+          <div class="chat-war-card__seven" id="chat-war-seven" style="width:50%"></div>
+        </div>
+        <div class="chat-war-card__foot">
+          <span id="chat-war-six-label">6: 0</span>
+          <span id="chat-war-seven-label">7: 0</span>
+        </div>
+      </div>
+
+      <div class="war-card">
+        <div class="war-card__head">
+          <span class="war-card__globe">🌍</span>
+          <span class="war-card__title" data-i18n="war.global">GLOBAL WAR</span>
+        </div>
+        <div class="war-card__bar">
+          <div class="war-bar">
+            <div class="war-bar__six" id="war-six" style="width:52.1%"></div>
+            <div class="war-bar__seven" id="war-seven" style="width:47.9%"></div>
+          </div>
+          <div class="war-card__legend">
+            <span class="legend-six"><b>6</b> <span id="war-six-pct">52.1%</span></span>
+            <span class="legend-seven"><span id="war-seven-pct">47.9%</span> <b>7</b></span>
+          </div>
+        </div>
+        <div class="war-card__foot">
+          <span class="muted" data-i18n="war.participation">WORLD PARTICIPATION</span>
+          <span id="war-participation">1,245,678</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ SCREEN: MATCHING ============ -->
+    <section class="screen screen--matching" data-screen="matching" hidden>
+      <div class="matching">
+        <div class="matching__title" data-i18n="matching.title">FINDING OPPONENT</div>
+        <div class="matching__ring">
+          <div class="ring ring--1"></div>
+          <div class="ring ring--2"></div>
+          <div class="ring ring--3"></div>
+          <img class="matching__side" id="matching-side" src="assets/digits/classic-6.png" alt="" />
+        </div>
+        <div class="matching__status" id="matching-status">Scanning the world…</div>
+        <button class="ghost-btn" id="matching-cancel" data-i18n="common.cancel">CANCEL</button>
+      </div>
+    </section>
+
+    <!-- ============ SCREEN: BATTLE ============ -->
+    <section class="screen screen--battle" data-screen="battle" hidden>
+      <header class="battle__top">
+        <div class="battle__player battle__player--me" id="card-me" data-side="6">
+          <div class="battle__player-head">
+            <span class="battle__player-name" id="me-name">YOU</span>
+            <img class="battle__player-side" id="me-side" src="assets/digits/classic-6.png" alt="6" />
+          </div>
+          <div class="battle__player-score" id="me-score">0</div>
+        </div>
+        <div class="battle__timer">
+          <svg viewBox="0 0 100 100" class="timer-ring">
+            <circle cx="50" cy="50" r="44" class="timer-ring__bg"></circle>
+            <circle cx="50" cy="50" r="44" class="timer-ring__fg" id="timer-fg"></circle>
+          </svg>
+          <span class="timer-ring__num" id="timer-num">15</span>
+        </div>
+        <div class="battle__player battle__player--enemy" id="card-enemy" data-side="7">
+          <div class="battle__player-head">
+            <img class="battle__player-side" id="enemy-side" src="assets/digits/classic-7.png" alt="7" />
+            <span class="battle__player-name" id="enemy-name">RIVAL</span>
+          </div>
+          <div class="battle__player-score" id="enemy-score">0</div>
+        </div>
+      </header>
+
+      <div class="battle__stage" id="battle-stage">
+        <div class="battle__speedlines" id="battle-speedlines" aria-hidden="true"></div>
+        <div class="battle__ambient" aria-hidden="true"></div>
+        <div class="vs-bar">
+          <div class="vs-bar__six" id="vs-bar-six" style="width:50%"></div>
+          <div class="vs-bar__seven" id="vs-bar-seven" style="width:50%"></div>
+        </div>
+        <div class="battle__meme" id="battle-meme">SIX • SEVEN • TAP!</div>
+        <div class="battle__combo" id="battle-combo" hidden></div>
+        <div class="battle__flash" id="battle-flash" aria-hidden="true"></div>
+
+        <div class="battle__hands">
+          <img class="battle__hand battle__hand--left" id="battle-hand-left" src="assets/hand.png" alt="" />
+          <img class="battle__hand battle__hand--right" id="battle-hand-right" src="assets/hand.png" alt="" />
+        </div>
+
+        <img class="battle__digit" id="battle-digit" src="assets/digits/classic-6.png" alt="" />
+
+        <div class="battle__floaters" id="battle-floaters" aria-hidden="true"></div>
+      </div>
+
+      <button class="tap-zone" id="tap-zone" aria-label="Tap to score">
+        <span class="tap-zone__hint" data-i18n="battle.tap">TAP TAP TAP</span>
+      </button>
+    </section>
+
+    <!-- ============ SCREEN: RESULT ============ -->
+    <section class="screen screen--result" data-screen="result" hidden>
+      <div class="result">
+        <div class="result__verdict" id="result-verdict">VICTORY</div>
+        <div class="result__subtitle" id="result-subtitle">BATTLE FINISHED</div>
+        <img class="result__side" id="result-side" src="assets/digits/classic-6.png" alt="" />
+        <div class="result__rows">
+          <div class="result__row">
+            <span data-i18n="result.yourTaps">Your taps</span>
+            <b id="result-my-score">0</b>
+          </div>
+          <div class="result__row">
+            <span data-i18n="result.rivalTaps">Rival taps</span>
+            <b id="result-enemy-score">0</b>
+          </div>
+          <div class="result__row result__row--reward">
+            <span data-i18n="result.reward">Reward</span>
+            <b><span class="coin-icon">🪙</span> <span id="result-reward">0</span></b>
+          </div>
+        </div>
+
+        <div class="challenge-status" id="challenge-status" hidden></div>
+
+        <div class="result-callout" id="result-callout">
+          <div class="result-callout__title" id="result-callout-title">ALPHA FIGHTER</div>
+          <div class="result-callout__text" id="result-callout-text">Your gang respects the taps.</div>
+          <div class="result-streak" id="result-streak">STREAK 0</div>
+        </div>
+
+        <div class="social-actions social-actions--minimal">
+          <button class="social-btn social-btn--shame" id="result-shame" type="button">SHAME A 7</button>
+          <button class="social-btn" id="result-raid" type="button" data-i18n="result.raid">RAID A CHAT</button>
+          <button class="ghost-btn ghost-btn--result-home" id="result-home" data-i18n="result.home">BACK TO HOME</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ SCREEN: SHOP ============ -->
+    <section class="screen screen--shop" data-screen="shop" hidden>
+      <header class="page-head page-head--with-home">
+        <button class="page-head__home" type="button" data-go-home data-i18n="common.home">HOME</button>
+        <h2 data-i18n="shop.title">SHOP</h2>
+        <div class="page-head__coins">
+          <span class="coin-icon">🪙</span>
+          <span id="shop-coins">0</span>
+        </div>
+      </header>
+      <div class="shop-tabs">
+        <button class="shop-tab is-active" data-shop-tab="hands" data-i18n="shop.hands">HANDS</button>
+        <button class="shop-tab" data-shop-tab="digits" data-i18n="shop.digits">DIGITS</button>
+      </div>
+      <div class="shop-grid" id="shop-grid"></div>
+    </section>
+
+    <!-- ============ SCREEN: LEADERBOARD ============ -->
+    <section class="screen screen--top" data-screen="top" hidden>
+      <header class="page-head page-head--with-home">
+        <button class="page-head__home" type="button" data-go-home data-i18n="common.home">HOME</button>
+        <h2 data-i18n="top.title">WEEKLY TOP</h2>
+        <div class="page-head__timer"><span class="page-head__timer-label" data-i18n="top.resetsIn">Resets in</span> <span class="page-head__timer-value" id="reset-in">3d 12h</span></div>
+      </header>
+
+      <div class="top-tabs" role="tablist" aria-label="Leaderboard type">
+        <button class="top-tab is-active" id="top-tab-players" type="button" data-top-tab="players" data-i18n="top.players">PLAYERS</button>
+        <button class="top-tab" id="top-tab-guilds" type="button" data-top-tab="guilds" data-i18n="top.guilds">GUILDS</button>
+      </div>
+
+      <div class="top-prize" id="top-player-prize">
+        <div class="top-prize__title">
+          <span data-i18n="top.prizePool">PRIZE POOL</span>
+          <span class="top-prize__badge"><span class="stars-icon">⭐</span> <span data-i18n="top.starsPowered">TG STARS</span></span>
+        </div>
+        <div class="top-prize__items">
+          <div class="prize prize--gold">
+            <span class="prize__rank">1st</span>
+            <span class="prize__val">⭐ 1000 + 🎁</span>
+            <span class="prize__note" data-i18n="top.prizeGift">+ NFT GIFT</span>
+          </div>
+          <div class="prize prize--silver">
+            <span class="prize__rank">2nd</span>
+            <span class="prize__val">⭐ 500</span>
+          </div>
+          <div class="prize prize--bronze">
+            <span class="prize__rank">3rd</span>
+            <span class="prize__val">⭐ 250</span>
+          </div>
+        </div>
+        <div class="top-prize__special">
+          <span class="top-prize__special-rank">67th</span>
+          <span class="top-prize__special-text" data-i18n="top.specialText">EXACT 67TH PLACE WINS</span>
+          <span class="top-prize__special-val">⭐ 67 + 🎁</span>
+        </div>
+        <div class="top-prize__hint" data-i18n="top.hint">Top 3 + the player landing on rank #67 each week win Telegram Stars and a special TG gift, delivered straight to your account.</div>
+      </div>
+
+      <div class="guild-prize" id="top-guild-prize" hidden>
+        <div class="guild-prize__title" data-i18n="guild.topRewards">GUILD WEEKLY REWARDS</div>
+        <div class="guild-prize__grid">
+          <div><b>#1</b><span>⭐ 6700</span><small data-i18n="guild.reward1">Founder chest + aura crown</small></div>
+          <div><b>#2</b><span>⭐ 3000</span><small data-i18n="guild.reward2">Raid chest</small></div>
+          <div><b>#3</b><span>⭐ 1500</span><small data-i18n="guild.reward3">Gang chest</small></div>
+          <div><b>#67</b><span>⭐ 670</span><small data-i18n="guild.reward67">Meme jackpot</small></div>
+        </div>
+        <div class="guild-prize__rules" data-i18n="guild.rules">Members must stay 24h before rewards. Leaving starts a 12h cooldown.</div>
+      </div>
+
+      <div class="top-list" id="top-list"></div>
+      <div class="top-me-rank" id="top-me-rank" hidden></div>
+    </section>
+
+    <!-- ============ SCREEN: PROFILE ============ -->
+    <section class="screen screen--profile" data-screen="profile" hidden>
+      <header class="page-head page-head--with-home">
+        <button class="page-head__home" type="button" data-go-home data-i18n="common.home">HOME</button>
+        <h2 data-i18n="profile.title">PROFILE</h2>
+      </header>
+      <div class="profile-card">
+        <div class="avatar avatar--lg">
+          <span class="avatar__emoji">😎</span>
+        </div>
+        <div class="profile-card__name" id="profile-name">Alpha67</div>
+        <div class="profile-card__rank" id="profile-rank">Recruit</div>
+        <div class="profile-card__stats">
+          <div class="stat"><b id="profile-wins">0</b><span data-i18n="profile.wins">WINS</span></div>
+          <div class="stat"><b id="profile-losses">0</b><span data-i18n="profile.losses">LOSSES</span></div>
+          <div class="stat"><b id="profile-best">0</b><span data-i18n="profile.best">BEST</span></div>
+        </div>
+      </div>
+</section>
+
+    <!-- ============ NAV ============ -->
+    <nav class="navbar">
+      <button class="nav-item" data-nav="profile">
+        <span class="nav-icon">👤</span><span class="nav-label" data-i18n="nav.profile">PROFILE</span>
+      </button>
+      <button class="nav-item nav-item--battle" data-nav="battle-quick">
+        <span class="nav-icon">⚔️</span><span class="nav-label" data-i18n="nav.fight">FIGHT</span>
+      </button>
+      <button class="nav-item" data-nav="top">
+        <span class="nav-icon">🏆</span><span class="nav-label" data-i18n="nav.top">TOP</span>
+      </button>
+    </nav>
+
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
