@@ -26,6 +26,9 @@ export default {
     if (!html.includes('battle-lite-engine.js')) {
       html = html.replace('</body>', '  <script src="battle-lite-engine.js"></script>\n</body>');
     }
+    if (!html.includes('release-mobile-fixes.js')) {
+      html = html.replace('</body>', '  <script src="release-mobile-fixes.js"></script>\n</body>');
+    }
     return new Response(html, {
       status: asset.status,
       headers: {
