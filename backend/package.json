@@ -1,15 +1,15 @@
 {
   "name": "six-seven-backend",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "type": "module",
   "engines": {
     "node": ">=20"
   },
   "scripts": {
-    "dev": "node --watch server.js",
-    "start": "node server.js",
-    "lint:syntax": "node --check server.js"
+    "dev": "node --watch server-production.js",
+    "start": "node server-production.js",
+    "lint:syntax": "node --check server-production.js"
   },
   "dependencies": {
     "cors": "^2.8.5",
