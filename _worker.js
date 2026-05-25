@@ -11,6 +11,9 @@ export default {
       const injection = `<script>window.SIX_SEVEN_API_BASE=${JSON.stringify(apiBase)};</script>\n  <script src="api-client.js"></script>`;
       html = html.replace('<script src="app.js"></script>', `${injection}\n  <script src="app.js"></script>`);
     }
+    if (!html.includes('battle-performance.css')) {
+      html = html.replace('</head>', '  <link rel="stylesheet" href="battle-performance.css" />\n</head>');
+    }
     if (!html.includes('desktop-guard-hard.js')) {
       html = html.replace('</body>', '  <script src="desktop-guard-hard.js"></script>\n</body>');
     }
