@@ -2,6 +2,7 @@
 (function(){
   var MASKED_CODE_RE = /^r[A-Za-z0-9]{8,20}$/;
   var LEGACY_CODE_RE = /^u[0-9a-z]{2,24}$/i;
+  var DEFAULT_BOT_USERNAME = 'sixseven_game_bot';
   var cachedMaskedLink = '';
   var loading = false;
 
@@ -9,13 +10,6 @@
   function isUnsafeCode(code){
     var value = String(code || '');
     return !MASKED_CODE_RE.test(value) || LEGACY_CODE_RE.test(value);
-  }
-  function cleanOrigin(){
-    try { return (location.origin || 'https://sixseven-a2f.pages.dev').replace(/\/$/, ''); }
-    catch(e) { return 'https://sixseven-a2f.pages.dev'; }
-  }
-  function cleanAppUrl(){
-    return cleanOrigin() + '/';
   }
   function syncUser(user){
     if (!user) return;
@@ -35,10 +29,8 @@
   }
   function makeDeepLink(param){
     var safeParam = String(param || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 128);
-    var bot = String(window.SIX_SEVEN_BOT_USERNAME || '').replace(/^@/, '');
-    var app = String(window.SIX_SEVEN_APP_NAME || '').replace(/^\//, '');
-    if (bot) return 'https://t.me/' + bot + (app ? '/' + encodeURIComponent(app) : '') + '?startapp=' + encodeURIComponent(safeParam);
-    return cleanAppUrl() + '?tgWebAppStartParam=' + encodeURIComponent(safeParam);
+    var bot = String(window.SIX_SEVEN_BOT_USERNAME || DEFAULT_BOT_USERNAME).replace(/^@/, '');
+    return 'https://t.me/' + bot + '?startapp=' + encodeURIComponent(safeParam);
   }
   function updateCachedLinkFromCode(code){
     if (!code || isUnsafeCode(code)) return '';
@@ -95,15 +87,16 @@
     }
   }
 
+  try { window.SIX_SEVEN_BOT_USERNAME = window.SIX_SEVEN_BOT_USERNAME || DEFAULT_BOT_USERNAME; } catch(e) {}
   try { window.getMaskedReferralLink = getMaskedReferralLink; } catch(e) {}
   try { window.getCachedMaskedReferralLink = getCachedMaskedReferralLink; } catch(e) {}
-  try { getReferralLink = window.getReferralLink = function(){ return getCachedMaskedReferralLink() || cleanAppUrl(); }; } catch(e) {}
+  try { getReferralLink = window.getReferralLink = function(){ return getCachedMaskedReferralLink() || ('https://t.me/' + DEFAULT_BOT_USERNAME); }; } catch(e) {}
   try { shareReferral = window.shareReferral = shareMaskedReferral; } catch(e) { window.shareReferral = shareMaskedReferral; }
 
   function bind(){
     var btn = document.getElementById('ref-invite');
-    if (btn && btn.dataset.maskedReferralBound !== '2') {
-      btn.dataset.maskedReferralBound = '2';
+    if (btn && btn.dataset.maskedReferralBound !== '3') {
+      btn.dataset.maskedReferralBound = '3';
       btn.addEventListener('click', function(e){
         e.preventDefault();
         e.stopImmediatePropagation();
