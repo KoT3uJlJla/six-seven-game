@@ -7,6 +7,31 @@
 .battle__combo,.battle__meme{box-shadow:0 8px 14px rgba(17,17,40,.16)!important;filter:none!important}
 .sixty-seven-jackpot__confetti,.sixty-seven-jackpot__word{display:none!important}
 
+/* Clean result typography: no doubled/glitchy stroke or shimmer on verdict text. */
+.result__verdict,
+.result__verdict.is-win,
+.result__verdict.is-lose,
+.result__verdict.is-tie{
+  font-family:var(--font-loud)!important;
+  text-shadow:none!important;
+  -webkit-text-stroke:0!important;
+  filter:none!important;
+  animation:none!important;
+  letter-spacing:.5px!important;
+  line-height:.95!important;
+  paint-order:normal!important;
+}
+.result__verdict::before,
+.result__verdict::after{display:none!important;content:none!important}
+.result[data-outcome="jackpot"] .result__verdict,
+.result[data-outcome="win"] .result__verdict{
+  color:#111128!important;
+  background:linear-gradient(135deg,#ffb800,#ff7a00)!important;
+  -webkit-background-clip:text!important;
+  background-clip:text!important;
+  -webkit-text-fill-color:transparent!important;
+}
+
 /* Center the selected digit in the battle stage. */
 .battle__digit{
   left:50%!important;
@@ -93,4 +118,85 @@ body.is-battle-running .timer-ring__fg{
   filter:grayscale(.25)!important;
   transform:none!important;
 }
+
+/* Clean 67 jackpot: no noisy particles, no blend-mode artifacts, one readable card. */
+.sixty-seven-jackpot--clean{
+  background:
+    radial-gradient(circle at 18% 16%,rgba(44,125,245,.34),transparent 35%),
+    radial-gradient(circle at 84% 20%,rgba(255,42,109,.30),transparent 38%),
+    linear-gradient(135deg,#111128,#271b61 54%,#111128)!important;
+  animation:cleanJackpotIn 180ms ease-out both!important;
+  filter:none!important;
+}
+.sixty-seven-jackpot--clean::before,
+.sixty-seven-jackpot--clean::after,
+.sixty-seven-jackpot--clean .sixty-seven-jackpot__confetti,
+.sixty-seven-jackpot--clean .sixty-seven-jackpot__word{display:none!important;content:none!important}
+.sixty-seven-jackpot--clean .sixty-seven-jackpot__card{
+  width:min(88vw,430px)!important;
+  padding:24px 18px 22px!important;
+  border-radius:32px!important;
+  background:rgba(255,255,255,.96)!important;
+  box-shadow:0 26px 70px rgba(0,0,0,.34),0 0 0 6px rgba(255,184,0,.16)!important;
+  display:grid!important;
+  place-items:center!important;
+  gap:12px!important;
+  text-align:center!important;
+  transform:translateZ(0)!important;
+}
+.sixty-seven-jackpot--clean .sixty-seven-jackpot__badge,
+.sixty-seven-jackpot--clean .sixty-seven-jackpot__clean-title,
+.sixty-seven-jackpot--clean .sixty-seven-jackpot__clean-score,
+.sixty-seven-jackpot--clean .sixty-seven-jackpot__sub{
+  position:static!important;
+  left:auto!important;
+  right:auto!important;
+  top:auto!important;
+  bottom:auto!important;
+  transform:none!important;
+  color:#111128!important;
+  text-shadow:none!important;
+  -webkit-text-stroke:0!important;
+  filter:none!important;
+  animation:none!important;
+  font-family:var(--font-loud)!important;
+  text-transform:uppercase!important;
+}
+.sixty-seven-jackpot--clean .sixty-seven-jackpot__badge{
+  padding:8px 12px!important;
+  border-radius:999px!important;
+  background:linear-gradient(135deg,#2c7df5,#ff2a6d)!important;
+  color:#fff!important;
+  font-size:13px!important;
+  letter-spacing:1.4px!important;
+  box-shadow:none!important;
+}
+.sixty-seven-jackpot--clean .sixty-seven-jackpot__clean-title{
+  max-width:100%!important;
+  font-size:clamp(28px,8vw,46px)!important;
+  line-height:.96!important;
+  letter-spacing:.3px!important;
+}
+.sixty-seven-jackpot--clean .sixty-seven-jackpot__clean-score{
+  font-size:clamp(64px,22vw,112px)!important;
+  line-height:.8!important;
+  background:linear-gradient(135deg,#ffb800,#ff2a6d)!important;
+  -webkit-background-clip:text!important;
+  background-clip:text!important;
+  -webkit-text-fill-color:transparent!important;
+}
+.sixty-seven-jackpot--clean .sixty-seven-jackpot__sub{
+  width:auto!important;
+  padding:10px 12px!important;
+  border-radius:18px!important;
+  background:rgba(17,17,40,.08)!important;
+  font-family:var(--font-display)!important;
+  font-size:13px!important;
+  letter-spacing:.9px!important;
+  box-shadow:none!important;
+}
+.sixty-seven-jackpot--clean.is-out{animation:cleanJackpotOut 360ms ease-in forwards!important}
+@keyframes cleanJackpotIn{from{opacity:0;transform:scale(1.02)}to{opacity:1;transform:scale(1)}}
+@keyframes cleanJackpotOut{to{opacity:0;transform:scale(.98)}}
+
 @media (max-width:390px){.battle__digit{width:min(36vw,138px)!important}.battle__hand{width:42%!important;max-width:186px!important}.battle__hand--left{left:-4%!important}.battle__hand--right{right:-4%!important}.battle__hand--left.is-tap,.battle__hand--left.is-lite-left-tap{transform:translate3d(0,-32px,0) rotate(-4deg) scaleX(-1)!important}.battle__hand--right.is-tap,.battle__hand--right.is-lite-right-tap{transform:translate3d(0,-32px,0) rotate(4deg) scaleX(1)!important}}
