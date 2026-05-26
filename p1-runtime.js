@@ -1,5 +1,4 @@
-/* P1 consolidated runtime: matchmaking + result CTA + mobile battle engine.
-   Replaces the old release-mobile-fixes / battle-lite-engine / hard-perf overlay stack. */
+/* P1 consolidated runtime: matchmaking + live battle sync + real leaderboard + mobile battle engine. */
 (function(){
   var LIVE_SEARCH_MS = 10000;
   var matchingTimer = null;
@@ -17,6 +16,9 @@
   function txt(ru,en){ return lang() === 'ru' ? ru : en; }
   function getSide(){ try { return Number(state.side) === 7 ? 7 : 6; } catch(e) { return 6; } }
   function callHaptic(kind){ try { haptic && haptic[kind] && haptic[kind](); } catch(e) {} }
+
+  function isLiveMatch(match){ return !!(match && match.kind === 'live' && match.id); }
+  function currentMatch(){ return isLiveMatch(window.SIX_SEVEN_CURRENT_MATCH) ? window.SIX_SEVEN_CURRENT_MATCH : null; }
 
   // ---------- Result CTA ----------
   function setResultRaidToNewBattle(){
@@ -89,12 +91,14 @@
     matchmakingRunId += 1;
     clearMatchingTimers();
     cancelLiveQueue();
+    window.SIX_SEVEN_CURRENT_MATCH = null;
     callHaptic('warning');
     try { show('home'); } catch(e) {}
   }
 
   function p1StartMatchmaking(){
     clearMatchingTimers();
+    window.SIX_SEVEN_CURRENT_MATCH = null;
     var runId = ++matchmakingRunId;
     try { show('matching'); } catch(e) {}
     setMatchingDigit();
@@ -107,13 +111,14 @@
       setMatchingStatus(txt('Ищем живого игрока… ' + left + 'с', 'Searching live player… ' + left + 's'));
     }
     function lockLive(match){
-      if (!match || liveFound || runId !== matchmakingRunId) return;
+      if (!isLiveMatch(match) || liveFound || runId !== matchmakingRunId) return false;
       liveFound = true;
       clearTimeout(matchingTimer);
       clearInterval(matchingPollTimer);
       setMatchingStatus(txt('Живой соперник найден', 'Live opponent found'));
       window.SIX_SEVEN_CURRENT_MATCH = match;
       safeBeginBattle(runId, 450);
+      return true;
     }
 
     renderCountdown();
@@ -122,11 +127,14 @@
       if (runId !== matchmakingRunId) return;
       renderCountdown();
       pollLiveQueue().then(lockLive);
-    }, 1000);
-    matchingTimer = setTimeout(function(){
+    }, 650);
+    matchingTimer = setTimeout(async function(){
       if (liveFound || runId !== matchmakingRunId) return;
+      var finalMatch = await pollLiveQueue();
+      if (lockLive(finalMatch)) return;
       clearInterval(matchingPollTimer);
       cancelLiveQueue();
+      window.SIX_SEVEN_CURRENT_MATCH = null;
       setMatchingStatus(txt('Живых нет — ставим бота', 'No live player — bot found'));
       safeBeginBattle(runId, 550);
     }, LIVE_SEARCH_MS);
@@ -146,7 +154,8 @@
     }, true);
   }
 
-  // ---------- Real leaderboard overlay, kept because app.js still has local fake fallback. ----------
+  // ---------- Real leaderboard. Do not call old app.js openTop because it renders fake users first. ----------
+  function loadingTop(){ emptyTop(txt('Загрузка данных…', 'Loading data…')); }
   function emptyTop(message){
     var list = byId('top-list');
     if (!list) return;
@@ -207,49 +216,60 @@
       myRankCard.append(title, row, text);
     }
   }
-  function looksFakeGuild(g){
-    var s = String((g && (g.name + ' ' + g.tag)) || '').toUpperCase();
-    return /SKIB|CULT|AURA FARM|BRAINROT|SIGMA|MANGO|COOKED|SAHUR|NO CHILL|SYNDICATE|BONK|RAID #|NPC #|OHIO|PLUH/.test(s);
+  function renderTopShell(){
+    try { show('top'); } catch(e) {}
+    try { if (typeof applyTranslations === 'function') applyTranslations(); } catch(e) {}
+    try {
+      document.querySelectorAll('.top-tab').forEach(function(btn){ btn.classList.toggle('is-active', btn.dataset.topTab === TOP_TAB); });
+      var playerPrize = byId('top-player-prize');
+      var guildPrize = byId('top-guild-prize');
+      if (playerPrize) playerPrize.hidden = TOP_TAB !== 'players';
+      if (guildPrize) guildPrize.hidden = TOP_TAB !== 'guilds';
+      var resetEl = byId('reset-in');
+      if (resetEl && typeof getWeeklyResetText === 'function') resetEl.textContent = getWeeklyResetText();
+    } catch(e) {}
+    var myRankCard = byId('top-me-rank');
+    if (myRankCard) { myRankCard.hidden = true; myRankCard.innerHTML = ''; }
+    loadingTop();
   }
-  async function renderRealTop(){
+  async function renderRealTop(force){
     var screen = document.querySelector('[data-screen="top"]');
     if (!screen || screen.hidden) return;
     var tab = 'players';
     try { tab = TOP_TAB || 'players'; } catch(e) {}
     var key = tab + ':' + Math.floor(Date.now() / 5000);
-    if (key === topRenderKey || Date.now() - lastTopFetchAt < 900) return;
+    if (!force && (key === topRenderKey || Date.now() - lastTopFetchAt < 900)) return;
     topRenderKey = key;
     lastTopFetchAt = Date.now();
 
     if (!window.SixSevenAPI || !SixSevenAPI.ready) {
-      emptyTop(txt('Ждём авторизацию Telegram…', 'Waiting for Telegram auth…'));
+      loadingTop();
       return;
     }
     try {
       if (tab === 'guilds') {
         var gd = await SixSevenAPI.request('/api/leaderboard/guilds', { method:'GET' });
-        var realGuilds = (gd.items || []).filter(function(g){ return !looksFakeGuild(g); });
-        if (!realGuilds.length) return emptyTop(txt('Реальных гильдий пока нет.', 'No real guilds yet.'));
+        var guilds = gd.items || [];
+        if (!guilds.length) return emptyTop(txt('Реальных гильдий пока нет.', 'No real guilds yet.'));
         var list = byId('top-list');
         if (list) {
           list.innerHTML = '';
-          realGuilds.slice(0,100).forEach(function(g){ if (typeof createGuildTopRow === 'function') list.appendChild(createGuildTopRow(g, g.rank)); });
+          guilds.slice(0,100).forEach(function(g){ if (typeof createGuildTopRow === 'function') list.appendChild(createGuildTopRow(g, g.rank)); });
         }
         return;
       }
       var data = await SixSevenAPI.request('/api/leaderboard/players', { method:'GET' });
       renderRows(data.items || [], data.me || null);
     } catch(e) {
-      emptyTop(txt('Не удалось загрузить реальный топ.', 'Could not load real leaderboard.'));
+      emptyTop(txt('Не удалось загрузить реальные данные.', 'Could not load real data.'));
     }
   }
   try {
-    var originalOpenTop = openTop;
     openTop = window.openTop = function(){
-      if (typeof originalOpenTop === 'function') originalOpenTop.apply(this, arguments);
-      setTimeout(renderRealTop, 0);
+      renderTopShell();
+      setTimeout(function(){ renderRealTop(true); }, 0);
     };
-  } catch(e) {}
+  } catch(e) { window.openTop = function(){ renderTopShell(); setTimeout(function(){ renderRealTop(true); }, 0); }; }
 
   // ---------- Mobile battle engine ----------
   (function installMobileBattleEngine(){
@@ -265,6 +285,9 @@
     var timerInterval = null;
     var endTimer = null;
     var comboHideTimer = null;
+    var liveSyncTimer = null;
+    var liveSyncInFlight = false;
+    var activeLiveMatch = null;
     var handResetTimers = { 6: null, 7: null };
     var lastRenderedMy = -1;
     var lastRenderedEnemy = -1;
@@ -272,9 +295,11 @@
     var botTps = 0;
     var botStartTs = 0;
     var refs = null;
+    var originalBeginBattle = null;
     var originalEndBattle = null;
     var originalResetBattleEffects = null;
 
+    try { originalBeginBattle = beginBattle; } catch(e) {}
     try { originalEndBattle = endBattle; } catch(e) {}
     try { originalResetBattleEffects = resetBattleEffects; } catch(e) {}
 
@@ -289,7 +314,7 @@
       return refs;
     }
     function stageVisible(){ var s = document.querySelector('[data-screen="battle"]'); return !!s && !s.hidden; }
-    function enemySideNow(){ return getSide() === 6 ? 7 : 6; }
+    function enemySideNow(){ return activeLiveMatch ? Number(activeLiveMatch.opponentSide || (getSide() === 6 ? 7 : 6)) : (getSide() === 6 ? 7 : 6); }
     function clearFx(){
       var r = refs || cacheRefs();
       if (r.floaters) r.floaters.replaceChildren();
@@ -319,7 +344,53 @@
       clearTimeout(comboHideTimer);
       comboHideTimer = setTimeout(function(){ if (r.combo) r.combo.hidden = true; }, 720);
     }
+    function applyLiveOpponent(match){
+      if (!isLiveMatch(match)) return;
+      try {
+        BATTLE.matchKind = 'live';
+        BATTLE.liveMatchId = match.id;
+        BATTLE.enemySide = Number(match.opponentSide) === 7 ? 7 : 6;
+        BATTLE.enemyName = match.opponentName || 'LIVE PLAYER';
+        var enemyNameEl = byId('enemy-name');
+        if (enemyNameEl) enemyNameEl.textContent = String(BATTLE.enemyName).toUpperCase();
+        var enemySideEl = byId('enemy-side');
+        if (enemySideEl && typeof getDigitUrl === 'function') enemySideEl.src = getDigitUrl(state.digitStyle, BATTLE.enemySide);
+        var cardEnemy = byId('card-enemy');
+        if (cardEnemy) cardEnemy.dataset.side = BATTLE.enemySide;
+        if (typeof setHandSkin === 'function') setHandSkin();
+      } catch(e) {}
+    }
+    function p1BeginBattle(){
+      activeLiveMatch = currentMatch();
+      if (typeof originalBeginBattle === 'function') originalBeginBattle.apply(this, arguments);
+      if (activeLiveMatch) setTimeout(function(){ applyLiveOpponent(activeLiveMatch); }, 0);
+    }
+    try { beginBattle = window.beginBattle = p1BeginBattle; } catch(e) { window.beginBattle = p1BeginBattle; }
+
+    async function pushLiveScore(finalPush){
+      if (!activeLiveMatch || !window.SixSevenAPI || !SixSevenAPI.ready || liveSyncInFlight) return;
+      liveSyncInFlight = true;
+      try {
+        var data = await SixSevenAPI.request('/api/matches/live/sync', {
+          method:'POST',
+          body: JSON.stringify({ matchId: activeLiveMatch.id, myScore: Number(BATTLE.myScore || 0), final: !!finalPush })
+        });
+        if (data && typeof data.opponentScore === 'number') {
+          BATTLE.enemyScore = Math.max(0, Number(data.opponentScore) || 0);
+          if (BATTLE.enemyScore % 3 === 0 && BATTLE.enemyScore > lastRenderedEnemy) liteHand(enemySideNow());
+          requestRender();
+        }
+      } catch(e) {}
+      liveSyncInFlight = false;
+    }
+    function startLiveSync(){
+      clearInterval(liveSyncTimer);
+      if (!activeLiveMatch) return;
+      pushLiveScore(false);
+      liveSyncTimer = setInterval(function(){ pushLiveScore(false); }, 220);
+    }
     function updateBotScore(nowMs){
+      if (activeLiveMatch) return;
       try {
         if (!BATTLE.running || !BATTLE.acceptingTaps) return;
         var elapsed = Math.max(0, (nowMs - botStartTs) / 1000);
@@ -344,8 +415,8 @@
     }
     function requestRender(){ if (rafPending) return; rafPending = true; requestAnimationFrame(renderFrame); }
     function stopLiteTimers(){
-      clearInterval(timerInterval); clearTimeout(endTimer); clearTimeout(comboHideTimer); clearTimeout(handResetTimers[6]); clearTimeout(handResetTimers[7]);
-      timerInterval = null; endTimer = null; document.body.classList.remove('is-battle-running');
+      clearInterval(timerInterval); clearTimeout(endTimer); clearTimeout(comboHideTimer); clearTimeout(handResetTimers[6]); clearTimeout(handResetTimers[7]); clearInterval(liveSyncTimer);
+      timerInterval = null; endTimer = null; liveSyncTimer = null; document.body.classList.remove('is-battle-running');
     }
 
     try { burstParticles = window.burstParticles = function(){}; } catch(e) { window.burstParticles = function(){}; }
@@ -363,7 +434,7 @@
     try { scheduleBotTap = window.scheduleBotTap = function(){}; } catch(e) { window.scheduleBotTap = function(){}; }
     try { setBattleMeme = window.setBattleMeme = function(text){ var r = refs || cacheRefs(); if (r.meme) { r.meme.textContent = text; r.meme.classList.remove('is-pop'); } }; } catch(e) {}
 
-    function p1EndBattle(){ stopLiteTimers(); clearFx(); resetHands(); if (typeof originalEndBattle === 'function') return originalEndBattle.apply(this, arguments); }
+    function p1EndBattle(){ pushLiveScore(true); stopLiteTimers(); clearFx(); resetHands(); if (typeof originalEndBattle === 'function') return originalEndBattle.apply(this, arguments); }
     function p1ResetBattleEffects(){ stopLiteTimers(); clearFx(); resetHands(); if (typeof originalResetBattleEffects === 'function') return originalResetBattleEffects.apply(this, arguments); }
     try { endBattle = window.endBattle = p1EndBattle; } catch(e) { window.endBattle = p1EndBattle; }
     try { resetBattleEffects = window.resetBattleEffects = p1ResetBattleEffects; } catch(e) { window.resetBattleEffects = p1ResetBattleEffects; }
@@ -373,12 +444,14 @@
       try {
         BATTLE.startTs = Date.now(); BATTLE.acceptingTaps = true; BATTLE.combo = 0; BATTLE.lastTapTs = 0;
         lastRenderedMy = -1; lastRenderedEnemy = -1; lastRenderedCombo = -1;
-        botTps = 5.8 + Math.random() * 4.2; botStartTs = performance.now();
+        activeLiveMatch = currentMatch();
+        if (!activeLiveMatch) { botTps = 5.8 + Math.random() * 4.2; botStartTs = performance.now(); }
         document.body.classList.add('is-battle-running');
         var r = refs || cacheRefs(); var CIRC = 2 * Math.PI * 44;
         if (r.timerFg) { r.timerFg.setAttribute('stroke-dasharray', CIRC.toFixed(2)); r.timerFg.style.strokeDashoffset = '0'; }
         if (r.tapHint) r.tapHint.textContent = typeof t === 'function' ? t('battle.tapLive') : 'TAP TAP TAP';
         if (r.stage) r.stage.classList.add('is-playing');
+        if (activeLiveMatch) startLiveSync();
         timerInterval = setInterval(function(){
           try {
             if (!BATTLE.running) { stopLiteTimers(); return; }
@@ -419,15 +492,15 @@
   function bootP1(){
     bindCancelButton();
     setResultRaidToNewBattle();
-    setTimeout(renderRealTop, 500);
+    setTimeout(function(){ renderRealTop(false); }, 500);
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bootP1, { once:true });
   else bootP1();
   document.addEventListener('click', function(e){
     if (e.target && (e.target.closest('[data-nav="top"]') || e.target.closest('[data-top-tab]'))) {
-      setTimeout(renderRealTop, 60);
-      setTimeout(renderRealTop, 700);
+      setTimeout(function(){ renderRealTop(true); }, 60);
+      setTimeout(function(){ renderRealTop(true); }, 700);
     }
   }, true);
-  setInterval(function(){ bindCancelButton(); setResultRaidToNewBattle(); renderRealTop(); }, 1000);
+  setInterval(function(){ bindCancelButton(); setResultRaidToNewBattle(); renderRealTop(false); }, 1000);
 })();
