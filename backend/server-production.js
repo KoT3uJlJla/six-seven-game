@@ -77,9 +77,36 @@ function verifyTelegramInitData(initData) {
   return { params, user };
 }
 
-function makeReferralCode(telegramId) {
+function makeLegacyReferralCode(telegramId) {
   const numeric = Number(telegramId);
   return Number.isFinite(numeric) ? `u${numeric.toString(36)}` : `u${String(telegramId).replace(/[^a-z0-9]/gi, '').slice(0, 12)}`;
+}
+
+function makeReferralCode() {
+  return `r${crypto.randomBytes(8).toString('base64url').replace(/[^A-Za-z0-9]/g, '').slice(0, 12)}`;
+}
+
+function isLegacyOrUnsafeReferralCode(code, telegramId) {
+  const value = String(code || '');
+  if (!value) return true;
+  if (value === makeLegacyReferralCode(telegramId)) return true;
+  return /^u[0-9a-z]{2,24}$/i.test(value);
+}
+
+async function createUniqueReferralCode() {
+  for (let i = 0; i < 12; i++) {
+    const code = makeReferralCode();
+    const exists = await User.exists({ referralCode: code });
+    if (!exists) return code;
+  }
+  return `r${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}`;
+}
+
+async function ensureMaskedReferralCode(user) {
+  if (!user) return false;
+  if (!isLegacyOrUnsafeReferralCode(user.referralCode, user.telegramId)) return false;
+  user.referralCode = await createUniqueReferralCode();
+  return true;
 }
 
 function signUser(user) {
@@ -186,6 +213,8 @@ function serializeUser(user, guild = null) {
 async function getMe(req) {
   const user = await User.findOne({ telegramId: String(req.auth.sub) });
   if (!user) throw Object.assign(new Error('User not found'), { status: 401 });
+  const changed = await ensureMaskedReferralCode(user);
+  if (changed) await user.save();
   return user;
 }
 async function getUserGuild(user) { return user.guildId ? Guild.findById(user.guildId) : null; }
@@ -276,9 +305,10 @@ app.post('/api/auth/telegram', async (req, res, next) => {
     const { user: tgUser } = verifyTelegramInitData(initData);
     const telegramId = String(tgUser.id);
     const set = { username: tgUser.username || '', firstName: tgUser.first_name || 'Alpha67', lastName: tgUser.last_name || '', languageCode: tgUser.language_code || '' };
-    const setOnInsert = { telegramId, side: sideOf(side), referralCode: makeReferralCode(telegramId), coins: 250 };
+    const setOnInsert = { telegramId, side: sideOf(side), referralCode: await createUniqueReferralCode(), coins: 250 };
     let user = await User.findOneAndUpdate({ telegramId }, { $set: set, $setOnInsert: setOnInsert }, { upsert: true, new: true });
     if (side) user.side = sideOf(side);
+    await ensureMaskedReferralCode(user);
     if (refCode && !user.referredBy) {
       const inviter = await User.findOne({ referralCode: String(refCode) });
       if (inviter && String(inviter._id) !== String(user._id)) {
