@@ -14,7 +14,7 @@ const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(32).toString('he
 const MONGODB_URI = process.env.MONGODB_URI || '';
 const FRONTEND_ORIGINS = (process.env.FRONTEND_ORIGINS || process.env.FRONTEND_URL || '')
   .split(',')
-  .map(v => v.trim())
+  .map(v => v.trim().replace(/\/$/, ''))
   .filter(Boolean);
 
 if (!MONGODB_URI) throw new Error('MONGODB_URI is required');
@@ -114,6 +114,7 @@ const matchSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
   opponentTelegramId: String,
   matchKind: { type: String, enum: ['bot', 'live'], default: 'bot', index: true },
+  matchId: String,
   side: { type: Number, enum: [6, 7], required: true },
   myScore: { type: Number, required: true },
   enemyScore: { type: Number, required: true },
@@ -126,6 +127,7 @@ const matchSchema = new mongoose.Schema({
   reason: String,
   week: { type: String, default: () => weekKey(), index: true },
 }, { timestamps: true });
+matchSchema.index({ userId: 1, matchId: 1 }, { unique: true, sparse: true });
 
 const referralEventSchema = new mongoose.Schema({
   inviterId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
@@ -168,32 +170,44 @@ async function getMe(req) {
   if (!user) throw Object.assign(new Error('User not found'), { status: 401 });
   return user;
 }
-
-async function getUserGuild(user) {
-  if (!user.guildId) return null;
-  return Guild.findById(user.guildId);
-}
+async function getUserGuild(user) { return user.guildId ? Guild.findById(user.guildId) : null; }
 
 const waitingBySide = new Map([[6, new Map()], [7, new Map()]]);
 const liveMatches = new Map();
+const liveMatchState = new Map();
 const MATCH_WAIT_TTL_MS = 15_000;
-
-function cleanQueue() {
-  const cutoff = now() - MATCH_WAIT_TTL_MS;
-  for (const queue of waitingBySide.values()) {
-    for (const [telegramId, entry] of queue.entries()) {
-      if (!entry || entry.createdAt < cutoff || liveMatches.has(telegramId)) queue.delete(telegramId);
-    }
-  }
-}
+const LIVE_MATCH_TTL_MS = 60_000;
 
 function removeFromQueues(telegramId) {
   waitingBySide.get(6)?.delete(String(telegramId));
   waitingBySide.get(7)?.delete(String(telegramId));
 }
-
+function deleteLiveMatchById(matchId) {
+  const state = liveMatchState.get(String(matchId));
+  if (state) {
+    liveMatches.delete(String(state.aId));
+    liveMatches.delete(String(state.bId));
+  }
+  liveMatchState.delete(String(matchId));
+}
+function cleanQueue() {
+  const queueCutoff = now() - MATCH_WAIT_TTL_MS;
+  for (const queue of waitingBySide.values()) {
+    for (const [telegramId, entry] of queue.entries()) {
+      if (!entry || entry.createdAt < queueCutoff || liveMatches.has(telegramId)) queue.delete(telegramId);
+    }
+  }
+  const liveCutoff = now() - LIVE_MATCH_TTL_MS;
+  for (const [matchId, state] of liveMatchState.entries()) {
+    if (!state || state.updatedAt < liveCutoff) deleteLiveMatchById(matchId);
+  }
+}
 function makeLiveMatch(a, b) {
   const matchId = crypto.randomUUID();
+  const shared = { id: matchId, aId: String(a.telegramId), bId: String(b.telegramId), scores: {}, final: {}, createdAt: now(), updatedAt: now() };
+  shared.scores[shared.aId] = 0;
+  shared.scores[shared.bId] = 0;
+  liveMatchState.set(matchId, shared);
   const matchA = { id: matchId, kind: 'live', opponentTelegramId: b.telegramId, opponentName: b.name, opponentSide: b.side, startsAt: now() + 500 };
   const matchB = { id: matchId, kind: 'live', opponentTelegramId: a.telegramId, opponentName: a.name, opponentSide: a.side, startsAt: now() + 500 };
   liveMatches.set(String(a.telegramId), matchA);
@@ -223,17 +237,19 @@ app.set('trust proxy', 1);
 app.use(helmet({ crossOriginResourcePolicy: false }));
 app.use(express.json({ limit: '256kb' }));
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
-app.use(rateLimit({ windowMs: 60_000, max: 360, standardHeaders: true, legacyHeaders: false }));
+app.use(rateLimit({ windowMs: 60_000, max: 720, standardHeaders: true, legacyHeaders: false }));
 app.use(cors({
   origin(origin, cb) {
-    if (!origin || FRONTEND_ORIGINS.length === 0 || FRONTEND_ORIGINS.includes(origin)) return cb(null, true);
+    const clean = String(origin || '').replace(/\/$/, '');
+    if (!origin || FRONTEND_ORIGINS.includes(clean)) return cb(null, true);
     return cb(new Error(`CORS blocked: ${origin}`));
   },
   credentials: false,
 }));
 
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, service: 'six-seven-backend', week: weekKey(), mongo: mongoose.connection.readyState, queues: { six: waitingBySide.get(6).size, seven: waitingBySide.get(7).size, matches: liveMatches.size } });
+  cleanQueue();
+  res.json({ ok: true, service: 'six-seven-backend', week: weekKey(), mongo: mongoose.connection.readyState, queues: { six: waitingBySide.get(6).size, seven: waitingBySide.get(7).size, matches: liveMatches.size, liveStates: liveMatchState.size } });
 });
 
 app.post('/api/auth/telegram', async (req, res, next) => {
@@ -278,25 +294,17 @@ app.post('/api/auth/telegram', async (req, res, next) => {
     }
 
     await user.save();
-    const guild = await getUserGuild(user);
-    res.json({ token: signUser(user), user: serializeUser(user, guild) });
+    res.json({ token: signUser(user), user: serializeUser(user, await getUserGuild(user)) });
   } catch (err) { next(err); }
 });
 
 app.get('/api/me', authRequired, async (req, res, next) => {
-  try {
-    const user = await getMe(req);
-    res.json({ user: serializeUser(user, await getUserGuild(user)) });
-  } catch (err) { next(err); }
+  try { const user = await getMe(req); res.json({ user: serializeUser(user, await getUserGuild(user)) }); }
+  catch (err) { next(err); }
 });
-
 app.post('/api/me/side', authRequired, async (req, res, next) => {
-  try {
-    const user = await getMe(req);
-    user.side = sideOf(req.body?.side);
-    await user.save();
-    res.json({ user: serializeUser(user, await getUserGuild(user)) });
-  } catch (err) { next(err); }
+  try { const user = await getMe(req); user.side = sideOf(req.body?.side); await user.save(); res.json({ user: serializeUser(user, await getUserGuild(user)) }); }
+  catch (err) { next(err); }
 });
 
 app.post('/api/matchmaking/join', authRequired, async (req, res, next) => {
@@ -310,17 +318,13 @@ app.post('/api/matchmaking/join', authRequired, async (req, res, next) => {
     const existing = liveMatches.get(telegramId);
     if (existing) return res.json({ status: 'matched', match: existing });
     removeFromQueues(telegramId);
-    const oppositeSide = side === 6 ? 7 : 6;
-    const oppositeQueue = waitingBySide.get(oppositeSide);
+    const oppositeQueue = waitingBySide.get(side === 6 ? 7 : 6);
     let opponent = null;
     for (const [id, entry] of oppositeQueue.entries()) {
-      if (id !== telegramId) { opponent = entry; break; }
+      if (id !== telegramId && !liveMatches.has(id)) { opponent = entry; break; }
     }
     if (opponent) {
-      const pair = makeLiveMatch(
-        { telegramId, name: user.firstName || user.username || 'Alpha67', side },
-        opponent
-      );
+      const pair = makeLiveMatch({ telegramId, name: user.firstName || user.username || 'Alpha67', side }, opponent);
       return res.json({ status: 'matched', match: pair.a });
     }
     waitingBySide.get(side).set(telegramId, { telegramId, name: user.firstName || user.username || 'Alpha67', side, createdAt: now() });
@@ -332,8 +336,7 @@ app.get('/api/matchmaking/poll', authRequired, async (req, res, next) => {
   try {
     cleanQueue();
     const user = await getMe(req);
-    const telegramId = String(user.telegramId);
-    const match = liveMatches.get(telegramId);
+    const match = liveMatches.get(String(user.telegramId));
     if (match) return res.json({ status: 'matched', match });
     res.json({ status: 'waiting' });
   } catch (err) { next(err); }
@@ -342,21 +345,58 @@ app.get('/api/matchmaking/poll', authRequired, async (req, res, next) => {
 app.post('/api/matchmaking/cancel', authRequired, async (req, res, next) => {
   try {
     const user = await getMe(req);
-    removeFromQueues(user.telegramId);
-    liveMatches.delete(String(user.telegramId));
+    const telegramId = String(user.telegramId);
+    removeFromQueues(telegramId);
+    const match = liveMatches.get(telegramId);
+    if (match) deleteLiveMatchById(match.id);
     res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+app.post('/api/matches/live/sync', authRequired, async (req, res, next) => {
+  try {
+    cleanQueue();
+    const user = await getMe(req);
+    const telegramId = String(user.telegramId);
+    const matchId = String(req.body?.matchId || '');
+    const match = liveMatches.get(telegramId);
+    if (!match || match.id !== matchId) throw Object.assign(new Error('Live match not found'), { status: 404 });
+    const state = liveMatchState.get(match.id);
+    if (!state) throw Object.assign(new Error('Live match state not found'), { status: 404 });
+    const myScore = clamp(req.body?.myScore, 0, 500);
+    state.scores[telegramId] = Math.max(Number(state.scores[telegramId] || 0), myScore);
+    if (req.body?.final) state.final[telegramId] = true;
+    state.updatedAt = now();
+    const opponentTelegramId = String(match.opponentTelegramId);
+    const opponentScore = Number(state.scores[opponentTelegramId] || 0);
+    res.json({ ok: true, matchId: match.id, myScore: state.scores[telegramId], opponentScore, opponentFinal: !!state.final[opponentTelegramId], final: !!state.final[telegramId] });
   } catch (err) { next(err); }
 });
 
 app.post('/api/matches/finish', authRequired, async (req, res, next) => {
   try {
     const user = await getMe(req);
-    const myScore = clamp(req.body?.myScore, 0, 500);
-    const enemyScore = clamp(req.body?.enemyScore, 0, 500);
-    const durationMs = clamp(req.body?.durationMs || 6700, 1000, 30000);
     const side = sideOf(req.body?.side || user.side);
     const matchKind = req.body?.matchKind === 'live' ? 'live' : 'bot';
-    const opponentTelegramId = String(req.body?.opponentTelegramId || '');
+    const requestedMatchId = String(req.body?.matchId || '');
+    let myScore = clamp(req.body?.myScore, 0, 500);
+    let enemyScore = clamp(req.body?.enemyScore, 0, 500);
+    let durationMs = clamp(req.body?.durationMs || 6700, 1000, 30000);
+    let opponentTelegramId = String(req.body?.opponentTelegramId || '');
+
+    if (matchKind === 'live') {
+      const match = liveMatches.get(String(user.telegramId));
+      if (match && (!requestedMatchId || requestedMatchId === match.id)) {
+        const liveState = liveMatchState.get(match.id);
+        if (liveState) {
+          myScore = clamp(liveState.scores[String(user.telegramId)] ?? myScore, 0, 500);
+          enemyScore = clamp(liveState.scores[String(match.opponentTelegramId)] ?? enemyScore, 0, 500);
+          opponentTelegramId = String(match.opponentTelegramId);
+          durationMs = 6700;
+        }
+      }
+    }
+
     const tps = myScore / (durationMs / 1000);
     const suspicious = tps > Number(process.env.MAX_TPS || 18) || myScore > Number(process.env.MAX_SCORE || 160);
     const result = myScore === enemyScore ? 'tie' : (myScore > enemyScore ? 'win' : 'lose');
@@ -378,17 +418,20 @@ app.post('/api/matches/finish', authRequired, async (req, res, next) => {
       if (guild) { guild.score += guildScore; await guild.save(); }
     }
 
-    await Match.create({ userId: user._id, opponentTelegramId, matchKind, side, myScore, enemyScore, result, durationMs, tapsPerSecond: tps, coinsReward: suspicious ? 0 : coinsReward, guildScore: suspicious ? 0 : guildScore, suspicious, reason: suspicious ? `tps=${tps.toFixed(2)}` : '', week: weekKey() });
+    await Match.create({ userId: user._id, opponentTelegramId, matchKind, matchId: requestedMatchId || undefined, side, myScore, enemyScore, result, durationMs, tapsPerSecond: tps, coinsReward: suspicious ? 0 : coinsReward, guildScore: suspicious ? 0 : guildScore, suspicious, reason: suspicious ? `tps=${tps.toFixed(2)}` : '', week: weekKey() });
     await user.save();
-    if (matchKind === 'live') liveMatches.delete(String(user.telegramId));
     res.json({ user: serializeUser(user, guild || await getUserGuild(user)), result: { result, coinsReward: suspicious ? 0 : coinsReward, suspicious } });
-  } catch (err) { next(err); }
+  } catch (err) {
+    if (err?.code === 11000) err = Object.assign(new Error('Match already finished'), { status: 409 });
+    next(err);
+  }
 });
 
 app.get('/api/leaderboard/players', authRequired, async (req, res, next) => {
   try {
     const me = await getMe(req);
-    const top = await User.find({ telegramId: { $exists: true, $ne: 'system-guild-bot' }, weeklyScore: { $gt: 0 } }).sort({ weeklyScore: -1, best: -1, updatedAt: 1 }).limit(100).lean();
+    const realFilter = { telegramId: { $exists: true, $ne: 'system-guild-bot' }, weeklyScore: { $gt: 0 } };
+    const top = await User.find(realFilter).sort({ weeklyScore: -1, best: -1, updatedAt: 1 }).limit(100).lean();
     const ids = top.map(u => String(u._id));
     let meRank = ids.indexOf(String(me._id)) + 1;
     if (!meRank) meRank = await User.countDocuments({ telegramId: { $exists: true, $ne: 'system-guild-bot' }, weeklyScore: { $gt: me.weeklyScore } }) + 1;
@@ -418,7 +461,7 @@ app.post('/api/guilds/create', authRequired, async (req, res, next) => {
     const user = await getMe(req);
     if (user.guildId) throw Object.assign(new Error('Already in guild'), { status: 409 });
     if (user.guildCooldownUntil && user.guildCooldownUntil.getTime() > now()) throw Object.assign(new Error('Guild cooldown active'), { status: 429 });
-    const name = String(req.body?.name || `${user.firstName || 'Alpha'} Gang`).trim().slice(0, 24) || 'Alpha Gang';
+    const name = String(req.body?.name || `${user.firstName || 'Alpha'} Gang`).replace(/[<>]/g, '').trim().slice(0, 24) || 'Alpha Gang';
     const tag = String(req.body?.tag || name.replace(/[^a-z0-9]/gi, '').slice(0, 4) || 'GANG').toUpperCase().slice(0, 5);
     const guild = await Guild.create({ name, tag, side: sideOf(req.body?.side || user.side), ownerId: user._id, week: weekKey() });
     user.guildId = guild._id;
@@ -464,7 +507,6 @@ app.post('/api/guilds/leave', authRequired, async (req, res, next) => {
 app.get('/api/shop/catalog', (_req, res) => {
   res.json({ hands: ['hand', 'clown', 'cube', 'devil', 'roblox', 'robo', 'spanch'], digits: ['classic', 'clown', 'devil', 'robo'] });
 });
-
 app.post('/api/shop/equip', authRequired, async (req, res, next) => {
   try {
     const user = await getMe(req);
