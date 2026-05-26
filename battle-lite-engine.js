@@ -120,7 +120,8 @@
   function renderCombo(){
     var r = refs || cacheRefs();
     if (!r.combo) return;
-    var combo = Number((window.BATTLE && BATTLE.combo) || 0);
+    var combo = 0;
+    try { combo = Number(BATTLE.combo || 0); } catch(e) { combo = 0; }
     if (combo < 3) {
       if (!r.combo.hidden) r.combo.hidden = true;
       lastRenderedCombo = combo;
