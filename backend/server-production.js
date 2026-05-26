@@ -25,6 +25,24 @@ const dayMs = 24 * 60 * 60 * 1000;
 const clamp = (n, min, max) => Math.max(min, Math.min(max, Number(n) || 0));
 const sideOf = v => Number(v) === 7 ? 7 : 6;
 
+const SHOP_CATALOG = {
+  hand: {
+    hand: 0,
+    clown: 500,
+    cube: 700,
+    spanch: 1200,
+    devil: 1500,
+    roblox: 2400,
+    robo: 3000,
+  },
+  digit: {
+    classic: 0,
+    clown: 400,
+    devil: 1200,
+    robo: 2500,
+  },
+};
+
 function weekKey(date = new Date()) {
   const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
   const day = d.getUTCDay() || 7;
@@ -261,7 +279,6 @@ app.post('/api/auth/telegram', async (req, res, next) => {
     const setOnInsert = { telegramId, side: sideOf(side), referralCode: makeReferralCode(telegramId), coins: 250 };
     let user = await User.findOneAndUpdate({ telegramId }, { $set: set, $setOnInsert: setOnInsert }, { upsert: true, new: true });
     if (side) user.side = sideOf(side);
-
     if (refCode && !user.referredBy) {
       const inviter = await User.findOne({ referralCode: String(refCode) });
       if (inviter && String(inviter._id) !== String(user._id)) {
@@ -280,7 +297,6 @@ app.post('/api/auth/telegram', async (req, res, next) => {
         }
       }
     }
-
     if (guildId && !user.guildId) {
       const guild = await Guild.findById(guildId);
       if (guild) {
@@ -292,7 +308,6 @@ app.post('/api/auth/telegram', async (req, res, next) => {
         await guild.save();
       }
     }
-
     await user.save();
     res.json({ token: signUser(user), user: serializeUser(user, await getUserGuild(user)) });
   } catch (err) { next(err); }
@@ -383,7 +398,6 @@ app.post('/api/matches/finish', authRequired, async (req, res, next) => {
     let enemyScore = clamp(req.body?.enemyScore, 0, 500);
     let durationMs = clamp(req.body?.durationMs || 6700, 1000, 30000);
     let opponentTelegramId = String(req.body?.opponentTelegramId || '');
-
     if (matchKind === 'live') {
       const match = liveMatches.get(String(user.telegramId));
       if (match && (!requestedMatchId || requestedMatchId === match.id)) {
@@ -396,13 +410,11 @@ app.post('/api/matches/finish', authRequired, async (req, res, next) => {
         }
       }
     }
-
     const tps = myScore / (durationMs / 1000);
     const suspicious = tps > Number(process.env.MAX_TPS || 18) || myScore > Number(process.env.MAX_SCORE || 160);
     const result = myScore === enemyScore ? 'tie' : (myScore > enemyScore ? 'win' : 'lose');
     const coinsReward = result === 'win' ? Math.floor(50 + myScore * 0.8) : (result === 'tie' ? 20 : 10);
     const guildScore = myScore + (result === 'win' ? 67 : result === 'tie' ? 20 : 6);
-
     if (result === 'win') { user.wins += 1; user.currentStreak = user.streakType === 'win' ? user.currentStreak + 1 : 1; user.streakType = 'win'; }
     else if (result === 'lose') { user.losses += 1; user.currentStreak = user.streakType === 'lose' ? user.currentStreak + 1 : 1; user.streakType = 'lose'; }
     else { user.ties += 1; user.currentStreak = 0; user.streakType = 'tie'; }
@@ -411,13 +423,11 @@ app.post('/api/matches/finish', authRequired, async (req, res, next) => {
     user.best = Math.max(user.best, myScore);
     user.coins += suspicious ? 0 : coinsReward;
     user.weeklyScore += suspicious ? 0 : (myScore + (result === 'win' ? 50 : 0));
-
     let guild = null;
     if (user.guildId && !suspicious) {
       guild = await Guild.findById(user.guildId);
       if (guild) { guild.score += guildScore; await guild.save(); }
     }
-
     await Match.create({ userId: user._id, opponentTelegramId, matchKind, matchId: requestedMatchId || undefined, side, myScore, enemyScore, result, durationMs, tapsPerSecond: tps, coinsReward: suspicious ? 0 : coinsReward, guildScore: suspicious ? 0 : guildScore, suspicious, reason: suspicious ? `tps=${tps.toFixed(2)}` : '', week: weekKey() });
     await user.save();
     res.json({ user: serializeUser(user, guild || await getUserGuild(user)), result: { result, coinsReward: suspicious ? 0 : coinsReward, suspicious } });
@@ -505,15 +515,39 @@ app.post('/api/guilds/leave', authRequired, async (req, res, next) => {
 });
 
 app.get('/api/shop/catalog', (_req, res) => {
-  res.json({ hands: ['hand', 'clown', 'cube', 'devil', 'roblox', 'robo', 'spanch'], digits: ['classic', 'clown', 'devil', 'robo'] });
+  res.json({ hands: Object.keys(SHOP_CATALOG.hand), digits: Object.keys(SHOP_CATALOG.digit), prices: SHOP_CATALOG });
 });
+
+app.post('/api/shop/buy', authRequired, async (req, res, next) => {
+  try {
+    const user = await getMe(req);
+    const type = String(req.body?.type || '');
+    const id = String(req.body?.id || '');
+    const prices = SHOP_CATALOG[type];
+    if (!prices || prices[id] == null) throw Object.assign(new Error('Unknown shop item'), { status: 400 });
+    const ownedField = type === 'hand' ? 'ownedHands' : 'ownedDigits';
+    const equipField = type === 'hand' ? 'hand' : 'digitStyle';
+    if (!Array.isArray(user[ownedField])) user[ownedField] = type === 'hand' ? ['hand'] : ['classic'];
+    if (!user[ownedField].includes(id)) {
+      const price = Number(prices[id] || 0);
+      if (user.coins < price) throw Object.assign(new Error('Not enough coins'), { status: 402 });
+      user.coins -= price;
+      user[ownedField].push(id);
+    }
+    user[equipField] = id;
+    await user.save();
+    res.json({ user: serializeUser(user, await getUserGuild(user)) });
+  } catch (err) { next(err); }
+});
+
 app.post('/api/shop/equip', authRequired, async (req, res, next) => {
   try {
     const user = await getMe(req);
     const type = String(req.body?.type || '');
     const id = String(req.body?.id || '');
     if (type === 'hand' && user.ownedHands.includes(id)) user.hand = id;
-    if (type === 'digit' && user.ownedDigits.includes(id)) user.digitStyle = id;
+    else if (type === 'digit' && user.ownedDigits.includes(id)) user.digitStyle = id;
+    else throw Object.assign(new Error('Item not owned'), { status: 403 });
     await user.save();
     res.json({ user: serializeUser(user, await getUserGuild(user)) });
   } catch (err) { next(err); }
