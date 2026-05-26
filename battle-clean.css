@@ -7,6 +7,20 @@
 .battle__combo,.battle__meme{box-shadow:0 8px 14px rgba(17,17,40,.16)!important;filter:none!important}
 .sixty-seven-jackpot__confetti,.sixty-seven-jackpot__word{display:none!important}
 
+/* Center the selected digit in the battle stage. */
+.battle__digit{
+  left:50%!important;
+  top:50%!important;
+  right:auto!important;
+  bottom:auto!important;
+  transform:translate(-50%,-50%)!important;
+  transform-origin:center center!important;
+  z-index:5!important;
+  width:min(38vw,156px)!important;
+  max-height:42%!important;
+  object-fit:contain!important;
+}
+
 /* Hands: visible, separated, mirrored, cheap vertical movement. */
 .battle__hands{overflow:hidden!important;contain:layout paint style!important}
 .battle__hand{width:44%!important;max-width:210px!important;bottom:-7%!important;filter:none!important;will-change:transform!important;transition:transform 58ms linear!important;transform-origin:50% 96%!important}
@@ -51,7 +65,7 @@ body.is-battle-running .timer-ring__fg{
   transition:none!important;
 }
 .battle-p1-engine .battle__floaters{display:none!important}
-.battle-p1-engine .battle__digit{filter:none!important;transition:none!important}
+.battle-p1-engine .battle__digit{filter:none!important;transition:none!important;left:50%!important;top:50%!important;transform:translate(-50%,-50%)!important}
 .battle-p1-engine .battle__digit.is-pop{transform:translate(-50%,-50%)!important}
 .battle-p1-engine .battle__stage.is-final-rush{animation:none!important}
 .battle-p1-engine .tap-zone.is-armed,.battle-p1-engine .tap-zone.is-live{animation:none!important}
@@ -73,4 +87,10 @@ body.is-battle-running .timer-ring__fg{
   pointer-events:none!important;
 }
 .battle-p1-engine .battle__combo[hidden]{display:none!important}
-@media (max-width:390px){.battle__hand{width:42%!important;max-width:186px!important}.battle__hand--left{left:-4%!important}.battle__hand--right{right:-4%!important}.battle__hand--left.is-tap,.battle__hand--left.is-lite-left-tap{transform:translate3d(0,-32px,0) rotate(-4deg) scaleX(-1)!important}.battle__hand--right.is-tap,.battle__hand--right.is-lite-right-tap{transform:translate3d(0,-32px,0) rotate(4deg) scaleX(1)!important}}
+.result-action-locked{
+  pointer-events:none!important;
+  opacity:.52!important;
+  filter:grayscale(.25)!important;
+  transform:none!important;
+}
+@media (max-width:390px){.battle__digit{width:min(36vw,138px)!important}.battle__hand{width:42%!important;max-width:186px!important}.battle__hand--left{left:-4%!important}.battle__hand--right{right:-4%!important}.battle__hand--left.is-tap,.battle__hand--left.is-lite-left-tap{transform:translate3d(0,-32px,0) rotate(-4deg) scaleX(-1)!important}.battle__hand--right.is-tap,.battle__hand--right.is-lite-right-tap{transform:translate3d(0,-32px,0) rotate(4deg) scaleX(1)!important}}
