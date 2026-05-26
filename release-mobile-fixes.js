@@ -3,6 +3,8 @@
   var LIVE_SEARCH_MS = 10000;
   var matchingTimer = null;
   var matchingPollTimer = null;
+  var pendingBattleTimer = null;
+  var matchmakingRunId = 0;
   var topRenderKey = '';
   var lastTopFetchAt = 0;
 
@@ -11,8 +13,41 @@
     try { return state && state.lang === 'ru' ? 'ru' : 'en'; } catch(e) { return document.documentElement.lang === 'ru' ? 'ru' : 'en'; }
   }
   function txt(ru,en){ return lang() === 'ru' ? ru : en; }
-  function tr(key, fallback){ try { return typeof t === 'function' ? t(key) : fallback; } catch(e) { return fallback; } }
   function getSide(){ try { return Number(state.side) === 7 ? 7 : 6; } catch(e) { return 6; } }
+
+  function clearMatchingTimers(){
+    clearTimeout(matchingTimer);
+    clearInterval(matchingPollTimer);
+    clearTimeout(pendingBattleTimer);
+    matchingTimer = null;
+    matchingPollTimer = null;
+    pendingBattleTimer = null;
+    try { if (typeof mmTimer !== 'undefined') clearInterval(mmTimer); } catch(e) {}
+  }
+
+  function cancelLiveQueue(){
+    try {
+      if (window.SixSevenAPI && SixSevenAPI.ready) {
+        SixSevenAPI.request('/api/matchmaking/cancel', { method:'POST' }).catch(function(){});
+      }
+    } catch(e) {}
+  }
+
+  window.cancelMatchmaking = function(){
+    matchmakingRunId += 1;
+    clearMatchingTimers();
+    cancelLiveQueue();
+    try { haptic && haptic.warning && haptic.warning(); } catch(e) {}
+    try { show('home'); } catch(e) {}
+  };
+
+  function safeBeginBattle(runId, delay){
+    clearTimeout(pendingBattleTimer);
+    pendingBattleTimer = setTimeout(function(){
+      if (runId !== matchmakingRunId) return;
+      try { beginBattle(); } catch(e) {}
+    }, delay);
+  }
 
   function setResultRaidToNewBattle(){
     var btn = byId('result-raid');
@@ -58,48 +93,66 @@
   }
 
   window.startMatchmaking = function(){
-    clearTimeout(matchingTimer);
-    clearInterval(matchingPollTimer);
-    try { if (typeof mmTimer !== 'undefined') clearInterval(mmTimer); } catch(e) {}
+    clearMatchingTimers();
+    var runId = ++matchmakingRunId;
     try { show('matching'); } catch(e) {}
     setMatchingDigit();
 
     var startedAt = Date.now();
     var liveFound = false;
     function renderCountdown(){
+      if (runId !== matchmakingRunId) return;
       var left = Math.max(0, Math.ceil((LIVE_SEARCH_MS - (Date.now() - startedAt)) / 1000));
       setMatchingStatus(txt('Ищем живого игрока… ' + left + 'с', 'Searching live player… ' + left + 's'));
     }
-    renderCountdown();
-
-    tryLiveQueue().then(function(match){
-      if (!match || liveFound) return;
+    function lockLive(match){
+      if (!match || liveFound || runId !== matchmakingRunId) return;
       liveFound = true;
       clearTimeout(matchingTimer);
       clearInterval(matchingPollTimer);
       setMatchingStatus(txt('Живой соперник найден', 'Live opponent found'));
-      setTimeout(function(){ try { beginBattle(); } catch(e) {} }, 450);
-    });
+      window.SIX_SEVEN_CURRENT_MATCH = match;
+      safeBeginBattle(runId, 450);
+    }
+    renderCountdown();
+
+    tryLiveQueue().then(lockLive);
 
     matchingPollTimer = setInterval(function(){
+      if (runId !== matchmakingRunId) return;
       renderCountdown();
-      pollLiveQueue().then(function(match){
-        if (!match || liveFound) return;
-        liveFound = true;
-        clearTimeout(matchingTimer);
-        clearInterval(matchingPollTimer);
-        setMatchingStatus(txt('Живой соперник найден', 'Live opponent found'));
-        setTimeout(function(){ try { beginBattle(); } catch(e) {} }, 450);
-      });
+      pollLiveQueue().then(lockLive);
     }, 1000);
 
     matchingTimer = setTimeout(function(){
-      if (liveFound) return;
+      if (liveFound || runId !== matchmakingRunId) return;
       clearInterval(matchingPollTimer);
+      cancelLiveQueue();
       setMatchingStatus(txt('Живых нет — ставим бота', 'No live player — bot found'));
-      setTimeout(function(){ try { beginBattle(); } catch(e) {} }, 550);
+      safeBeginBattle(runId, 550);
     }, LIVE_SEARCH_MS);
   };
+
+  var cancelBtn = byId('matching-cancel');
+  if (cancelBtn && !cancelBtn.dataset.releaseCancelBound) {
+    cancelBtn.dataset.releaseCancelBound = '1';
+    cancelBtn.addEventListener('click', function(e){
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      window.cancelMatchmaking();
+    }, true);
+  }
+  document.addEventListener('DOMContentLoaded', function(){
+    var btn = byId('matching-cancel');
+    if (btn && !btn.dataset.releaseCancelBound) {
+      btn.dataset.releaseCancelBound = '1';
+      btn.addEventListener('click', function(e){
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        window.cancelMatchmaking();
+      }, true);
+    }
+  });
 
   function emptyTop(message){
     var list = byId('top-list');
