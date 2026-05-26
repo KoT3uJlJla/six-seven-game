@@ -1,12 +1,14 @@
 /* P1 consolidated runtime: matchmaking + live battle sync + real leaderboard + mobile battle engine. */
 (function(){
   var LIVE_SEARCH_MS = 10000;
+  var RESULT_ACTION_LOCK_MS = 3000;
   var matchingTimer = null;
   var matchingPollTimer = null;
   var pendingBattleTimer = null;
   var matchmakingRunId = 0;
   var topRenderKey = '';
   var lastTopFetchAt = 0;
+  var resultLockTimer = null;
 
   function byId(id){ return document.getElementById(id); }
   function lang(){
@@ -20,6 +22,22 @@
   function isLiveMatch(match){ return !!(match && match.kind === 'live' && match.id); }
   function currentMatch(){ return isLiveMatch(window.SIX_SEVEN_CURRENT_MATCH) ? window.SIX_SEVEN_CURRENT_MATCH : null; }
 
+  // ---------- Result action lock ----------
+  function setResultActionsLocked(locked){
+    ['result-home', 'result-raid'].forEach(function(id){
+      var btn = byId(id);
+      if (!btn) return;
+      btn.disabled = !!locked;
+      btn.setAttribute('aria-disabled', locked ? 'true' : 'false');
+      btn.classList.toggle('result-action-locked', !!locked);
+    });
+  }
+  function lockResultActions(){
+    clearTimeout(resultLockTimer);
+    setResultActionsLocked(true);
+    resultLockTimer = setTimeout(function(){ setResultActionsLocked(false); }, RESULT_ACTION_LOCK_MS);
+  }
+
   // ---------- Result CTA ----------
   function setResultRaidToNewBattle(){
     var btn = byId('result-raid');
@@ -29,6 +47,11 @@
     if (btn.dataset.p1NewBattleBound === '1') return;
     btn.dataset.p1NewBattleBound = '1';
     btn.addEventListener('click', function(e){
+      if (btn.disabled || btn.getAttribute('aria-disabled') === 'true') {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        return;
+      }
       e.preventDefault();
       e.stopImmediatePropagation();
       callHaptic('medium');
@@ -502,5 +525,20 @@
       setTimeout(function(){ renderRealTop(true); }, 700);
     }
   }, true);
-  setInterval(function(){ bindCancelButton(); setResultRaidToNewBattle(); renderRealTop(false); }, 1000);
+  document.addEventListener('click', function(e){
+    var locked = e.target && e.target.closest && e.target.closest('.result-action-locked');
+    if (!locked) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+  }, true);
+  var resultWasVisible = false;
+  setInterval(function(){
+    bindCancelButton();
+    setResultRaidToNewBattle();
+    renderRealTop(false);
+    var resultScreen = document.querySelector('[data-screen="result"]');
+    var visible = !!resultScreen && !resultScreen.hidden;
+    if (visible && !resultWasVisible) lockResultActions();
+    resultWasVisible = visible;
+  }, 250);
 })();
