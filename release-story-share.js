@@ -1,6 +1,6 @@
-/* Exact 67 Telegram Story share. Synchronous shareToStory with preloaded masked link. */
+/* Exact 67 Telegram Story share. Uses the real story poster asset and t.me referral link. */
 (function(){
-  var STORY_MEDIA_PATH = '/assets/digits/classic-7.png';
+  var STORY_MEDIA_PATH = '/assets/share-67-story.png';
   var PROD_ORIGIN = 'https://sixseven-a2f.pages.dev';
 
   function getTg(){ return window.Telegram && window.Telegram.WebApp; }
@@ -63,8 +63,8 @@
   }
   function bind(){
     var btn = byId('result-shame');
-    if (!btn || btn.dataset.story67Bound === '3') return;
-    btn.dataset.story67Bound = '3';
+    if (!btn || btn.dataset.story67Bound === '4') return;
+    btn.dataset.story67Bound = '4';
     btn.addEventListener('click', function(e){
       if (!isExact67()) return;
       e.preventDefault();
