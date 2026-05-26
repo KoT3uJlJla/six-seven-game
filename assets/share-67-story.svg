@@ -1,0 +1,137 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1920" viewBox="0 0 1080 1920" role="img" aria-label="СИИИИКС СЕЕЕВЕЕЕН 67 jackpot story">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0618ff"/>
+      <stop offset="0.32" stop-color="#111128"/>
+      <stop offset="0.65" stop-color="#9b16ff"/>
+      <stop offset="1" stop-color="#ff007a"/>
+    </linearGradient>
+    <linearGradient id="six" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6ff3ff"/>
+      <stop offset="0.45" stop-color="#126dff"/>
+      <stop offset="1" stop-color="#0027c9"/>
+    </linearGradient>
+    <linearGradient id="seven" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fff"/>
+      <stop offset="0.3" stop-color="#ff4bd2"/>
+      <stop offset="1" stop-color="#ff0055"/>
+    </linearGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="8" result="b"/>
+      <feColorMatrix in="b" type="matrix" values="1 0 0 0 0.1 0 1 0 0 0.55 0 0 1 0 1 0 0 0 1 0"/>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="hardShadow" x="-15%" y="-15%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="12" stdDeviation="0" flood-color="#000" flood-opacity="1"/>
+      <feDropShadow dx="0" dy="0" stdDeviation="8" flood-color="#ff00a8" flood-opacity="0.85"/>
+    </filter>
+    <pattern id="dots" width="36" height="36" patternUnits="userSpaceOnUse">
+      <circle cx="4" cy="4" r="3" fill="#fff" opacity=".24"/>
+      <circle cx="22" cy="20" r="2" fill="#00eaff" opacity=".32"/>
+    </pattern>
+    <pattern id="scan" width="12" height="12" patternUnits="userSpaceOnUse">
+      <rect width="12" height="3" fill="#000" opacity=".16"/>
+    </pattern>
+    <style>
+      .loud{font-family:Impact,Arial Black,system-ui,sans-serif;font-weight:900;text-anchor:middle;text-transform:uppercase}
+      .sticker{font-family:Impact,Arial Black,system-ui,sans-serif;font-weight:900;text-anchor:middle;letter-spacing:2px}
+      .white{fill:#fff;stroke:#0b0720;stroke-width:14;paint-order:stroke fill;filter:url(#hardShadow)}
+      .mini{fill:#fff;stroke:#000;stroke-width:8;paint-order:stroke fill}
+      .tag{fill:#fff;stroke:#111128;stroke-width:8;paint-order:stroke fill}
+      .n{font-family:Impact,Arial Black,sans-serif;font-weight:900;text-anchor:middle}
+    </style>
+  </defs>
+
+  <rect width="1080" height="1920" fill="url(#bg)"/>
+  <rect width="1080" height="1920" fill="url(#dots)" opacity=".9"/>
+  <rect width="1080" height="1920" fill="url(#scan)" opacity=".55"/>
+
+  <g opacity=".9">
+    <path d="M-80 310 L1160 40 L1130 130 L-70 440Z" fill="#00eaff" opacity=".28"/>
+    <path d="M-70 720 L1180 350 L1160 470 L-60 880Z" fill="#ff00a8" opacity=".33"/>
+    <path d="M-20 1290 L1120 1030 L1160 1120 L-40 1420Z" fill="#ffe600" opacity=".26"/>
+    <path d="M120 0 L210 1920" stroke="#00eaff" stroke-width="10" opacity=".35"/>
+    <path d="M920 0 L780 1920" stroke="#ff008c" stroke-width="12" opacity=".4"/>
+    <path d="M0 1800 L1080 80" stroke="#fff" stroke-width="5" opacity=".25"/>
+  </g>
+
+  <g opacity=".96">
+    <polygon points="44,102 268,68 278,170 30,186" fill="#09091c" stroke="#fff" stroke-width="5"/>
+    <text x="154" y="116" class="sticker" font-size="28" fill="#fff">ACHIEVEMENT</text>
+    <text x="154" y="153" class="sticker" font-size="28" fill="#fff">UNLOCKED</text>
+    <text x="154" y="206" class="sticker" font-size="42" fill="#ff00a8">ЛЕГЕНДА!</text>
+
+    <path d="M610 56 L1000 24 L1030 166 L690 205 Z" fill="#ffea00" stroke="#0b0720" stroke-width="12"/>
+    <text x="820" y="126" class="sticker" font-size="72" fill="#0b0720" transform="rotate(-5 820 126)">JACKPOT!</text>
+    <rect x="746" y="164" width="214" height="54" rx="12" fill="#0b0720"/>
+    <text x="853" y="204" class="sticker" font-size="34" fill="#fff">67 POINTS</text>
+
+    <path d="M332 78 L555 24 L620 164 L404 232 L300 158 Z" fill="#0618ff" stroke="#00eaff" stroke-width="6"/>
+    <text x="464" y="136" class="sticker" font-size="64" fill="#fff" filter="url(#glow)">AURA</text>
+    <text x="490" y="206" class="sticker" font-size="82" fill="#ff00a8" stroke="#fff" stroke-width="3">+67</text>
+  </g>
+
+  <g opacity=".92">
+    <text x="105" y="360" class="sticker mini" font-size="54" fill="#ff007a" transform="rotate(-12 105 360)">NO WAY</text>
+    <text x="935" y="342" class="sticker mini" font-size="42" fill="#126dff" transform="rotate(8 935 342)">GG!</text>
+    <text x="155" y="1370" class="sticker mini" font-size="66" fill="#fff" transform="rotate(-8 155 1370)">HYPE</text>
+    <text x="848" y="1264" class="sticker mini" font-size="48" fill="#fff" transform="rotate(6 848 1264)">BRAINROT</text>
+    <text x="790" y="1504" class="sticker mini" font-size="46" fill="#00eaff" transform="rotate(-3 790 1504)">LET'S GOOOO!</text>
+  </g>
+
+  <g opacity=".78">
+    <text x="90" y="520" class="n" font-size="72" fill="#5af7ff" stroke="#0618ff" stroke-width="6">6</text>
+    <text x="1010" y="590" class="n" font-size="82" fill="#ff54bd" stroke="#160018" stroke-width="6">7</text>
+    <text x="190" y="965" class="n" font-size="62" fill="#ff54bd" stroke="#160018" stroke-width="5">7</text>
+    <text x="930" y="1010" class="n" font-size="58" fill="#5af7ff" stroke="#0618ff" stroke-width="5">6</text>
+    <text x="140" y="1600" class="n" font-size="74" fill="#ff4bd2" stroke="#fff" stroke-width="4">67</text>
+    <text x="920" y="1700" class="n" font-size="92" fill="#ffea00" stroke="#000" stroke-width="8">67</text>
+  </g>
+
+  <g filter="url(#hardShadow)">
+    <path d="M38 430 L168 292 L292 364 L474 270 L565 360 L750 260 L840 370 L1040 320 L1006 522 L1052 690 L806 674 L688 782 L540 704 L370 802 L240 690 L50 720 L105 560 Z" fill="#fff" opacity=".95"/>
+    <path d="M62 458 L202 322 L300 398 L470 320 L558 398 L742 306 L826 414 L1012 356 L968 520 L1014 654 L780 636 L675 742 L540 660 L378 748 L250 640 L78 682 L132 548 Z" fill="#0b0720"/>
+  </g>
+
+  <text x="540" y="590" class="loud white" font-size="156">СИИИИКС</text>
+  <text x="535" y="920" class="loud" font-size="520" fill="url(#six)" stroke="#fff" stroke-width="16" paint-order="stroke fill" filter="url(#hardShadow)">6</text>
+  <text x="680" y="920" class="loud" font-size="520" fill="url(#seven)" stroke="#fff" stroke-width="16" paint-order="stroke fill" filter="url(#hardShadow)">7</text>
+  <text x="540" y="1168" class="loud white" font-size="126">СЕЕЕВЕЕЕН</text>
+
+  <g>
+    <path d="M245 1214 L816 1170 L790 1272 L220 1310 Z" fill="#ffe600" stroke="#111128" stroke-width="8"/>
+    <text x="520" y="1236" class="sticker" font-size="42" fill="#111128" transform="rotate(-4 520 1236)">ЭТО НЕ 66 И НЕ 68</text>
+    <text x="520" y="1296" class="sticker" font-size="68" fill="#ff007a" transform="rotate(-4 520 1296)">ЭТО 67!!!</text>
+  </g>
+
+  <g>
+    <rect x="318" y="1350" width="444" height="246" rx="22" fill="#08091c" stroke="#00eaff" stroke-width="6"/>
+    <text x="540" y="1410" class="sticker" font-size="34" fill="#fff">SCORE</text>
+    <text x="540" y="1532" class="sticker" font-size="132" fill="#fff" stroke="#ff00a8" stroke-width="6">67</text>
+    <rect x="350" y="1562" width="380" height="46" rx="6" fill="#ff007a"/>
+    <text x="540" y="1595" class="sticker" font-size="25" fill="#fff">NEW PERSONAL BEST!</text>
+  </g>
+
+  <g opacity=".98">
+    <polygon points="60,1644 305,1614 332,1765 42,1790" fill="#0b0720" stroke="#00eaff" stroke-width="5"/>
+    <text x="178" y="1686" class="sticker" font-size="36" fill="#00eaff">LEVEL UP!</text>
+    <text x="178" y="1736" class="sticker" font-size="24" fill="#fff">АУРА НА МАКСИМУМЕ</text>
+    <text x="178" y="1780" class="sticker" font-size="34" fill="#ffe600">★★★★★</text>
+
+    <polygon points="720,1635 1040,1600 1030,1822 704,1812" fill="#0b0720" stroke="#ff4bd2" stroke-width="5"/>
+    <text x="870" y="1672" class="sticker" font-size="28" fill="#fff">♥ 67 ПОСВЯЩАЕТСЯ</text>
+    <text x="870" y="1722" class="sticker" font-size="25" fill="#fff">ВСЕМ, КТО ПОНИМАЕТ</text>
+    <text x="870" y="1794" class="sticker" font-size="58" fill="#ff007a">СИИИКС!</text>
+  </g>
+
+  <g opacity=".75">
+    <path d="M910 770 l54 42 -46 20 56 88 -86 -50 -28 64 -28 -92 -70 12 56 -58 -44 -62 76 22z" fill="#ffea00" stroke="#111128" stroke-width="8"/>
+    <path d="M90 730 c38-48 110-28 122 22 22 90-128 128-160 44-8-22 14-42 38-66z" fill="#00aaff" stroke="#111128" stroke-width="8"/>
+    <circle cx="122" cy="760" r="12" fill="#111128"/><circle cx="174" cy="760" r="12" fill="#111128"/>
+    <path d="M96 815 q50 46 112 0" stroke="#ff007a" stroke-width="18" fill="none" stroke-linecap="round"/>
+  </g>
+
+  <g opacity=".9">
+    <text x="540" y="1858" class="sticker" font-size="44" fill="#00eaff" stroke="#111128" stroke-width="8" paint-order="stroke fill">ЖМИ И ЗАБИРАЙ +67 АУРЫ</text>
+  </g>
+</svg>
