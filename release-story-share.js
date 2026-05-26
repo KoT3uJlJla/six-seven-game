@@ -1,6 +1,6 @@
-/* Exact 67 Telegram Story share. Uses masked referral link only. */
+/* Exact 67 Telegram Story share. Synchronous shareToStory with preloaded masked link. */
 (function(){
-  var STORY_MEDIA_PATH = '/assets/share-67-story.svg';
+  var STORY_MEDIA_PATH = '/assets/digits/classic-7.png';
   var PROD_ORIGIN = 'https://sixseven-a2f.pages.dev';
 
   function getTg(){ return window.Telegram && window.Telegram.WebApp; }
@@ -21,9 +21,14 @@
     try { side = Number(state.side) === 7 ? 7 : 6; } catch(e) {}
     return 'СИИИИКС СЕЕЕВЕЕЕН — ровно 67 тапов за банду ' + side + '. Забери +67 ауры.';
   }
-  async function getMaskedLink(){
-    if (typeof window.getMaskedReferralLink === 'function') return await window.getMaskedReferralLink();
-    throw new Error('masked referral helper is not ready');
+  function getCachedLink(){
+    try {
+      if (typeof window.getCachedMaskedReferralLink === 'function') return window.getCachedMaskedReferralLink();
+    } catch(e) {}
+    try {
+      if (typeof window.getMaskedReferralLink === 'function') window.getMaskedReferralLink().catch(function(){});
+    } catch(e) {}
+    return '';
   }
   function openFallback(url){
     var text = caption();
@@ -33,32 +38,33 @@
     else if (app && app.openLink) app.openLink(shareUrl);
     else window.open(shareUrl, '_blank', 'noopener,noreferrer');
   }
-  async function shareExact67Story(){
-    var link;
-    try { link = await getMaskedLink(); }
-    catch(e) {
-      try { if (haptic && haptic.error) haptic.error(); } catch(_) {}
-      try { toast('Referral link is syncing. Try again in a second.'); } catch(_) {}
+  function shareExact67Story(){
+    var link = getCachedLink();
+    if (!link) {
+      try { if (haptic && haptic.error) haptic.error(); } catch(e) {}
+      try { toast('Referral link is syncing. Try again in a second.'); } catch(e) {}
       return false;
     }
     try { if (haptic && haptic.success) haptic.success(); } catch(e) {}
     var app = getTg();
     try {
-      if (app && typeof app.shareToStory === 'function' && (!app.isVersionAtLeast || app.isVersionAtLeast('7.8'))) {
+      if (app && typeof app.shareToStory === 'function') {
         app.shareToStory(getMediaUrl(), {
           text: caption(),
           widget_link: { url: link, name: 'Играть и забрать +67' }
         });
         return true;
       }
-    } catch(e) {}
+    } catch(e) {
+      try { toast('Story share failed. Opening regular share.'); } catch(_) {}
+    }
     openFallback(link);
     return false;
   }
   function bind(){
     var btn = byId('result-shame');
-    if (!btn || btn.dataset.story67Bound === '2') return;
-    btn.dataset.story67Bound = '2';
+    if (!btn || btn.dataset.story67Bound === '3') return;
+    btn.dataset.story67Bound = '3';
     btn.addEventListener('click', function(e){
       if (!isExact67()) return;
       e.preventDefault();
@@ -67,6 +73,7 @@
     }, true);
   }
   document.addEventListener('DOMContentLoaded', bind);
-  setInterval(bind, 1000);
+  setTimeout(bind, 0);
+  setInterval(bind, 700);
   window.shareExact67Story = shareExact67Story;
 })();
