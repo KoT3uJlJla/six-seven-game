@@ -6,3 +6,58 @@
 .battle__hand,.battle__digit,.floater{filter:none!important;will-change:transform,opacity!important;transform:translateZ(0)}
 .battle__combo,.battle__meme{box-shadow:0 8px 14px rgba(17,17,40,.16)!important;filter:none!important}
 .sixty-seven-jackpot__confetti,.sixty-seven-jackpot__word{display:none!important}
+
+/* P0: during active battle pause everything not essential to tapping. */
+body.is-battle-running .bg-layer,
+body.is-battle-running .bg-mesh,
+body.is-battle-running .bg-grid,
+body.is-battle-running .bg-ghosts,
+body.is-battle-running .bg-particles,
+body.is-battle-running .bg-noise,
+body.is-battle-running .hero__hand,
+body.is-battle-running .hero__sparks,
+body.is-battle-running .spark,
+body.is-battle-running .war-card::after,
+body.is-battle-running .daily-curse::after,
+body.is-battle-running .challenge-card,
+body.is-battle-running .tap-zone,
+body.is-battle-running .battle__stage,
+body.is-battle-running .battle__meme,
+body.is-battle-running .battle__combo,
+body.is-battle-running .battle__digit{
+  animation:none!important;
+  transition:none!important;
+}
+body.is-battle-running .battle__stage,
+body.is-battle-running .battle__player,
+body.is-battle-running .tap-zone,
+body.is-battle-running .battle__timer{
+  box-shadow:none!important;
+  filter:none!important;
+  backdrop-filter:none!important;
+  -webkit-backdrop-filter:none!important;
+}
+body.is-battle-running .vs-bar__six,
+body.is-battle-running .vs-bar__seven,
+body.is-battle-running .timer-ring__fg{
+  transition:none!important;
+}
+.battle-p0-engine .battle__floaters{display:none!important}
+.battle-p0-engine .battle__combo{
+  left:50%!important;
+  bottom:18px!important;
+  top:auto!important;
+  width:var(--combo-size,92px)!important;
+  height:var(--combo-size,92px)!important;
+  display:grid!important;
+  place-items:center!important;
+  padding:0!important;
+  border-radius:999px!important;
+  transform:translateX(-50%)!important;
+  font-size:18px!important;
+  line-height:1.05!important;
+  text-align:center!important;
+  pointer-events:none!important;
+}
+.battle-p0-engine .battle__combo[hidden]{display:none!important}
+.battle-p0-engine .battle__hand{transition:transform 58ms linear!important}
