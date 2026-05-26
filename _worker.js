@@ -28,6 +28,9 @@ export default {
     if (!html.includes('release-hotfix-visuals-shop.js')) {
       html = html.replace('</body>', '  <script src="release-hotfix-visuals-shop.js"></script>\n</body>');
     }
+    if (!html.includes('release-referral-mask.js')) {
+      html = html.replace('</body>', '  <script src="release-referral-mask.js"></script>\n</body>');
+    }
     if (!html.includes('release-story-share.js')) {
       html = html.replace('</body>', '  <script src="release-story-share.js"></script>\n</body>');
     }
