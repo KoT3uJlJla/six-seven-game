@@ -1,12 +1,21 @@
-/* Referral privacy guard: never share TGID-derived referral codes. */
+/* Referral privacy guard: never share TGID-derived referral codes or Telegram hash payload. */
 (function(){
   var MASKED_CODE_RE = /^r[A-Za-z0-9]{8,20}$/;
   var LEGACY_CODE_RE = /^u[0-9a-z]{2,24}$/i;
+  var cachedMaskedLink = '';
+  var loading = false;
 
   function tg(){ return window.Telegram && window.Telegram.WebApp; }
   function isUnsafeCode(code){
     var value = String(code || '');
     return !MASKED_CODE_RE.test(value) || LEGACY_CODE_RE.test(value);
+  }
+  function cleanOrigin(){
+    try { return (location.origin || 'https://sixseven-a2f.pages.dev').replace(/\/$/, ''); }
+    catch(e) { return 'https://sixseven-a2f.pages.dev'; }
+  }
+  function cleanAppUrl(){
+    return cleanOrigin() + '/';
   }
   function syncUser(user){
     if (!user) return;
@@ -19,20 +28,6 @@
       if (typeof syncTopBarCoins === 'function') syncTopBarCoins();
     } catch(e) {}
   }
-  async function loadMaskedCode(){
-    try {
-      if (!window.SixSevenAPI || !SixSevenAPI.ready) throw new Error('API is not ready');
-      var data = await SixSevenAPI.request('/api/me', { method:'GET' });
-      syncUser(data.user);
-      var code = data && data.user && data.user.referrals && data.user.referrals.code;
-      if (!code || isUnsafeCode(code)) throw new Error('Masked referral code is not available yet');
-      return code;
-    } catch(e) {
-      var local = state && state.referrals && state.referrals.code;
-      if (local && !isUnsafeCode(local)) return local;
-      throw e;
-    }
-  }
   function makeParam(code){
     var side = 6;
     try { side = Number(state.side) === 7 ? 7 : 6; } catch(e) {}
@@ -43,15 +38,39 @@
     var bot = String(window.SIX_SEVEN_BOT_USERNAME || '').replace(/^@/, '');
     var app = String(window.SIX_SEVEN_APP_NAME || '').replace(/^\//, '');
     if (bot) return 'https://t.me/' + bot + (app ? '/' + encodeURIComponent(app) : '') + '?startapp=' + encodeURIComponent(safeParam);
+    return cleanAppUrl() + '?tgWebAppStartParam=' + encodeURIComponent(safeParam);
+  }
+  function updateCachedLinkFromCode(code){
+    if (!code || isUnsafeCode(code)) return '';
+    cachedMaskedLink = makeDeepLink(makeParam(code));
+    return cachedMaskedLink;
+  }
+  async function loadMaskedCode(){
+    if (loading) return cachedMaskedLink;
+    loading = true;
     try {
-      var url = new URL(location.href);
-      url.searchParams.set('tgWebAppStartParam', safeParam);
-      return url.toString();
-    } catch(e) { return location.href; }
+      if (!window.SixSevenAPI || !SixSevenAPI.ready) throw new Error('API is not ready');
+      var data = await SixSevenAPI.request('/api/me', { method:'GET' });
+      syncUser(data.user);
+      var code = data && data.user && data.user.referrals && data.user.referrals.code;
+      var link = updateCachedLinkFromCode(code);
+      if (!link) throw new Error('Masked referral code is not available yet');
+      return link;
+    } finally {
+      loading = false;
+    }
   }
   async function getMaskedReferralLink(){
-    var code = await loadMaskedCode();
-    return makeDeepLink(makeParam(code));
+    if (cachedMaskedLink) return cachedMaskedLink;
+    var local = state && state.referrals && state.referrals.code;
+    var localLink = updateCachedLinkFromCode(local);
+    if (localLink) return localLink;
+    return await loadMaskedCode();
+  }
+  function getCachedMaskedReferralLink(){
+    if (cachedMaskedLink) return cachedMaskedLink;
+    var code = state && state.referrals && state.referrals.code;
+    return updateCachedLinkFromCode(code);
   }
   function openShare(text, url){
     var shareUrl = 'https://t.me/share/url?url=' + encodeURIComponent(url || '') + '&text=' + encodeURIComponent(text || '');
@@ -61,7 +80,7 @@
   }
   async function shareMaskedReferral(){
     try {
-      var link = await getMaskedReferralLink();
+      var link = getCachedMaskedReferralLink() || await getMaskedReferralLink();
       try { state.referrals.sent = Math.max(0, Number(state.referrals.sent || 0)) + 1; saveState(); renderReferralCard(); } catch(e) {}
       try { haptic && haptic.success && haptic.success(); } catch(e) {}
       var side = 6;
@@ -72,21 +91,19 @@
     } catch(err) {
       try { haptic && haptic.error && haptic.error(); } catch(e) {}
       try { toast('Referral link is syncing. Try again in a second.'); } catch(e) {}
+      loadMaskedCode().catch(function(){});
     }
   }
 
   try { window.getMaskedReferralLink = getMaskedReferralLink; } catch(e) {}
-  try { getReferralLink = window.getReferralLink = function(){
-    var code = state && state.referrals && state.referrals.code;
-    if (!code || isUnsafeCode(code)) return location.href;
-    return makeDeepLink(makeParam(code));
-  }; } catch(e) {}
+  try { window.getCachedMaskedReferralLink = getCachedMaskedReferralLink; } catch(e) {}
+  try { getReferralLink = window.getReferralLink = function(){ return getCachedMaskedReferralLink() || cleanAppUrl(); }; } catch(e) {}
   try { shareReferral = window.shareReferral = shareMaskedReferral; } catch(e) { window.shareReferral = shareMaskedReferral; }
 
   function bind(){
     var btn = document.getElementById('ref-invite');
-    if (btn && btn.dataset.maskedReferralBound !== '1') {
-      btn.dataset.maskedReferralBound = '1';
+    if (btn && btn.dataset.maskedReferralBound !== '2') {
+      btn.dataset.maskedReferralBound = '2';
       btn.addEventListener('click', function(e){
         e.preventDefault();
         e.stopImmediatePropagation();
@@ -94,12 +111,13 @@
       }, true);
     }
     try {
-      if (state && state.referrals && isUnsafeCode(state.referrals.code) && window.SixSevenAPI && SixSevenAPI.ready) {
+      if (window.SixSevenAPI && SixSevenAPI.ready && !getCachedMaskedReferralLink()) {
         loadMaskedCode().catch(function(){});
       }
     } catch(e) {}
   }
   document.addEventListener('DOMContentLoaded', bind);
-  window.addEventListener('six-seven:api-ready', function(e){ syncUser(e.detail); bind(); });
+  window.addEventListener('six-seven:api-ready', function(e){ syncUser(e.detail); bind(); loadMaskedCode().catch(function(){}); });
+  setTimeout(bind, 0);
   setInterval(bind, 1000);
 })();
