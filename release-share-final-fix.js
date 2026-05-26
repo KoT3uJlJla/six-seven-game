@@ -1,7 +1,7 @@
 /* Final share guard: all referral/guild/story links must use t.me bot startapp format. */
 (function(){
   var BOT_USERNAME = 'sixseven_game_bot';
-  var STORY_MEDIA_URL = 'https://sixseven-a2f.pages.dev/assets/share-67-story.png';
+  var STORY_MEDIA_URL = 'https://sixseven-a2f.pages.dev/assets/share-67-story.jpg';
   var MASKED_CODE_RE = /^r[A-Za-z0-9]{8,20}$/;
 
   function tg(){ return window.Telegram && window.Telegram.WebApp; }
@@ -134,8 +134,8 @@
   function bind(){
     ensureMaskedCodeWarm();
     var guildBtn = byId('guild-invite');
-    if (guildBtn && guildBtn.dataset.finalShareFixBound !== '1') {
-      guildBtn.dataset.finalShareFixBound = '1';
+    if (guildBtn && guildBtn.dataset.finalShareFixBound !== '2') {
+      guildBtn.dataset.finalShareFixBound = '2';
       guildBtn.addEventListener('click', function(e){
         e.preventDefault();
         e.stopImmediatePropagation();
@@ -143,8 +143,8 @@
       }, true);
     }
     var storyBtn = byId('result-shame');
-    if (storyBtn && storyBtn.dataset.finalStoryShareBound !== '1') {
-      storyBtn.dataset.finalStoryShareBound = '1';
+    if (storyBtn && storyBtn.dataset.finalStoryShareBound !== '2') {
+      storyBtn.dataset.finalStoryShareBound = '2';
       storyBtn.addEventListener('click', function(e){
         if (!isExact67()) return;
         e.preventDefault();
