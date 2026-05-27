@@ -34,6 +34,9 @@ export default {
     if (!html.includes('release-story-share.js')) {
       html = html.replace('</body>', '  <script src="release-story-share.js"></script>\n</body>');
     }
+    if (!html.includes('release-image-rescue.js')) {
+      html = html.replace('</body>', '  <script src="release-image-rescue.js"></script>\n</body>');
+    }
 
     return new Response(html, {
       status: asset.status,
