@@ -1,17 +1,5 @@
 export default {
   async fetch(request, env) {
-    const url = new URL(request.url);
-
-    // Telegram Stories can hang forever if media is served with wrong headers.
-    if (url.pathname.includes('share-67-story')) {
-      const asset = await env.ASSETS.fetch(request);
-      const headers = new Headers(asset.headers);
-      headers.set('content-type', 'image/jpeg');
-      headers.set('cache-control', 'public, max-age=31536000, immutable');
-      headers.set('access-control-allow-origin', '*');
-      return new Response(asset.body, { status: asset.status, headers });
-    }
-
     const asset = await env.ASSETS.fetch(request);
     const contentType = asset.headers.get('content-type') || '';
 
@@ -47,9 +35,6 @@ export default {
     }
     if (!html.includes('release-share-final-fix.js')) {
       html = html.replace('</body>', '  <script src="release-share-final-fix.js"></script>\n</body>');
-    }
-    if (!html.includes('release-live-final-fix.js')) {
-      html = html.replace('</body>', '  <script src="release-live-final-fix.js"></script>\n</body>');
     }
 
     return new Response(html, {
