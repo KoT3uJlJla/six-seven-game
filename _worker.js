@@ -37,6 +37,9 @@ export default {
     if (!html.includes('release-image-rescue.js')) {
       html = html.replace('</body>', '  <script src="release-image-rescue.js"></script>\n</body>');
     }
+    if (!html.includes('release-live-canonical.js')) {
+      html = html.replace('</body>', '  <script src="release-live-canonical.js"></script>\n</body>');
+    }
 
     return new Response(html, {
       status: asset.status,
