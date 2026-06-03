@@ -120,6 +120,15 @@ state.referrals = { ...DEFAULT_STATE.referrals, ...(state.referrals || {}) };
 state.guild = { ...DEFAULT_STATE.guild, ...(state.guild || {}) };
 if (!state.referrals.code) state.referrals.code = makeLocalReferralCode();
 
+const DOM = Object.create(null);
+function byId(id) {
+  return DOM[id] || (DOM[id] = document.getElementById(id));
+}
+function setText(id, value) {
+  const el = byId(id);
+  if (el) el.textContent = value;
+}
+
 // Language is driven by the Telegram/client/device language on every launch.
 // Russian client -> Russian UI; everything else -> English UI.
 const detectedClientLang = detectClientLang();
@@ -1500,7 +1509,7 @@ function beginBattle() {
   setHandSkin();
 
   // initial digit + side color
-  const digitEl = document.getElementById('battle-digit');
+  const digitEl = byId('battle-digit');
   digitEl.dataset.side = state.side;
   digitEl.src = getDigitUrl(state.digitStyle, state.side);
 
@@ -1774,7 +1783,9 @@ function animateHandForSide(side) {
 }
 
 function spawnFloaterForSide(side) {
-  const layer = document.getElementById('battle-floaters');
+  const layer = byId('battle-floaters');
+  if (!layer) return;
+  while (layer.childElementCount > 90) layer.firstElementChild?.remove();
   const f = document.createElement('div');
   f.className = 'floater';
   f.dataset.side = side;
@@ -1791,21 +1802,21 @@ function spawnFloaterForSide(side) {
   setTimeout(() => f.remove(), 820);
 }
 
-const tapZone = document.getElementById('tap-zone');
+const tapZone = byId('tap-zone');
 function onTap() {
   if (!BATTLE.running || !BATTLE.acceptingTaps) return;
 
   haptic.light();
 
   BATTLE.myScore++;
-  document.getElementById('me-score').textContent = BATTLE.myScore;
+  setText('me-score', BATTLE.myScore);
 
   // Animate THE PLAYER'S OWN side hand and floater
   animateHandForSide(state.side);
   spawnFloaterForSide(state.side);
 
   // Pop the central digit
-  const digitEl = document.getElementById('battle-digit');
+  const digitEl = byId('battle-digit');
   digitEl.classList.remove('is-pop');
   void digitEl.offsetWidth;
   digitEl.classList.add('is-pop');
@@ -1824,13 +1835,15 @@ function onTap() {
   updateVsBar();
 }
 
-tapZone.addEventListener('pointerdown', onTap);
+tapZone?.addEventListener('pointerdown', onTap);
 // Also allow tapping the stage itself for satisfaction
-document.getElementById('battle-stage').addEventListener('pointerdown', onTap);
+byId('battle-stage')?.addEventListener('pointerdown', onTap);
 
 // Visual particle burst (pure DOM, tap confetti)
 function burstParticles(side, amount = 5) {
-  const layer = document.getElementById('battle-floaters');
+  const layer = byId('battle-floaters');
+  if (!layer) return;
+  amount = Math.min(amount, 8);
   const color = side === 6 ? '#2c7df5' : '#ff2a6d';
   const baseX = side === 6 ? 28 : 72; // anchor X% near the active hand
   const baseY = 60;
@@ -2514,7 +2527,10 @@ function createGuildTopRow(g, place) {
   rank.textContent = place;
   const name = document.createElement('div');
   name.className = 'top-row__name';
-  name.innerHTML = `<span class="guild-row-tag">${g.tag || 'GNG'}</span> ${g.name}${g.me ? '  (YOU)' : ''}`;
+  const tag = document.createElement('span');
+  tag.className = 'guild-row-tag';
+  tag.textContent = g.tag || 'GNG';
+  name.append(tag, ' ' + (g.name || 'Guild') + (g.me ? '  (YOU)' : ''));
   const right = document.createElement('div');
   right.className = 'top-row__right';
   const sideEl = document.createElement('span');

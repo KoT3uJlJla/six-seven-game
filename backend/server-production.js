@@ -16,14 +16,30 @@ const FRONTEND_ORIGINS = (process.env.FRONTEND_ORIGINS || process.env.FRONTEND_U
   .split(',')
   .map(v => v.trim().replace(/\/$/, ''))
   .filter(Boolean);
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+const MAX_TPS = Number(process.env.MAX_TPS || 18);
+const MAX_SCORE = Number(process.env.MAX_SCORE || 160);
+const FINISH_WINDOW_MS = Number(process.env.MATCH_FINISH_WINDOW_MS || 60_000);
+const FINISH_MAX_PER_WINDOW = Number(process.env.MATCH_FINISH_MAX_PER_WINDOW || 12);
 
 if (!MONGODB_URI) throw new Error('MONGODB_URI is required');
 if (!BOT_TOKEN) console.warn('[boot] BOT_TOKEN is missing. Telegram auth will fail until configured.');
+if (IS_PRODUCTION && !process.env.JWT_SECRET) throw new Error('JWT_SECRET is required in production');
 
 const now = () => Date.now();
 const dayMs = 24 * 60 * 60 * 1000;
 const clamp = (n, min, max) => Math.max(min, Math.min(max, Number(n) || 0));
 const sideOf = v => Number(v) === 7 ? 7 : 6;
+const isValidObjectId = value => mongoose.Types.ObjectId.isValid(String(value || ''));
+
+function cleanPublicText(value, { max = 32, fallback = '' } = {}) {
+  return String(value || '')
+    .normalize('NFKC')
+    .replace(/[<>\u0000-\u001f\u007f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, max) || fallback;
+}
 
 const SHOP_CATALOG = {
   hand: {
@@ -224,6 +240,27 @@ const liveMatches = new Map();
 const liveMatchState = new Map();
 const MATCH_WAIT_TTL_MS = 15_000;
 const LIVE_MATCH_TTL_MS = 60_000;
+const finishWindows = new Map();
+
+function assertCanFinishMatch(telegramId) {
+  const key = String(telegramId);
+  const cutoff = now() - FINISH_WINDOW_MS;
+  const recent = (finishWindows.get(key) || []).filter(ts => ts >= cutoff);
+  if (recent.length >= FINISH_MAX_PER_WINDOW) {
+    throw Object.assign(new Error('Match finish rate limit exceeded'), { status: 429 });
+  }
+  recent.push(now());
+  finishWindows.set(key, recent);
+}
+
+function cleanFinishWindows() {
+  const cutoff = now() - FINISH_WINDOW_MS;
+  for (const [key, values] of finishWindows.entries()) {
+    const recent = values.filter(ts => ts >= cutoff);
+    if (recent.length) finishWindows.set(key, recent);
+    else finishWindows.delete(key);
+  }
+}
 
 function removeFromQueues(telegramId) {
   waitingBySide.get(6)?.delete(String(telegramId));
@@ -238,6 +275,7 @@ function deleteLiveMatchById(matchId) {
   liveMatchState.delete(String(matchId));
 }
 function cleanQueue() {
+  cleanFinishWindows();
   const queueCutoff = now() - MATCH_WAIT_TTL_MS;
   for (const queue of waitingBySide.values()) {
     for (const [telegramId, entry] of queue.entries()) {
@@ -251,12 +289,13 @@ function cleanQueue() {
 }
 function makeLiveMatch(a, b) {
   const matchId = crypto.randomUUID();
-  const shared = { id: matchId, aId: String(a.telegramId), bId: String(b.telegramId), scores: {}, final: {}, createdAt: now(), updatedAt: now() };
+  const createdAt = now();
+  const shared = { id: matchId, aId: String(a.telegramId), bId: String(b.telegramId), scores: {}, final: {}, createdAt, updatedAt: createdAt };
   shared.scores[shared.aId] = 0;
   shared.scores[shared.bId] = 0;
   liveMatchState.set(matchId, shared);
-  const matchA = { id: matchId, kind: 'live', opponentTelegramId: b.telegramId, opponentName: b.name, opponentSide: b.side, startsAt: now() + 500 };
-  const matchB = { id: matchId, kind: 'live', opponentTelegramId: a.telegramId, opponentName: a.name, opponentSide: a.side, startsAt: now() + 500 };
+  const matchA = { id: matchId, kind: 'live', opponentTelegramId: b.telegramId, opponentName: b.name, opponentSide: b.side, startsAt: createdAt + 500 };
+  const matchB = { id: matchId, kind: 'live', opponentTelegramId: a.telegramId, opponentName: a.name, opponentSide: a.side, startsAt: createdAt + 500 };
   liveMatches.set(String(a.telegramId), matchA);
   liveMatches.set(String(b.telegramId), matchB);
   removeFromQueues(a.telegramId);
@@ -283,7 +322,7 @@ const app = express();
 app.set('trust proxy', 1);
 app.use(helmet({ crossOriginResourcePolicy: false }));
 app.use(express.json({ limit: '256kb' }));
-app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
+app.use(morgan(IS_PRODUCTION ? 'combined' : 'dev'));
 app.use(rateLimit({ windowMs: 60_000, max: 720, standardHeaders: true, legacyHeaders: false }));
 app.use(cors({
   origin(origin, cb) {
@@ -309,12 +348,13 @@ app.post('/api/auth/telegram', async (req, res, next) => {
     let user = await User.findOneAndUpdate({ telegramId }, { $set: set, $setOnInsert: setOnInsert }, { upsert: true, new: true });
     if (side) user.side = sideOf(side);
     await ensureMaskedReferralCode(user);
-    if (refCode && !user.referredBy) {
-      const inviter = await User.findOne({ referralCode: String(refCode) });
+    const cleanRefCode = String(refCode || '').trim().slice(0, 32);
+    if (cleanRefCode && !user.referredBy) {
+      const inviter = await User.findOne({ referralCode: cleanRefCode });
       if (inviter && String(inviter._id) !== String(user._id)) {
         const created = await ReferralEvent.findOneAndUpdate(
           { inviteeId: user._id },
-          { $setOnInsert: { inviterId: inviter._id, inviteeId: user._id, code: String(refCode), side: sideOf(side) } },
+          { $setOnInsert: { inviterId: inviter._id, inviteeId: user._id, code: cleanRefCode, side: sideOf(side) } },
           { upsert: true, new: true, rawResult: true }
         );
         if (created?.lastErrorObject?.upserted) {
@@ -327,7 +367,7 @@ app.post('/api/auth/telegram', async (req, res, next) => {
         }
       }
     }
-    if (guildId && !user.guildId) {
+    if (guildId && !user.guildId && isValidObjectId(guildId)) {
       const guild = await Guild.findById(guildId);
       if (guild) {
         user.guildId = guild._id;
@@ -421,44 +461,47 @@ app.post('/api/matches/live/sync', authRequired, async (req, res, next) => {
 app.post('/api/matches/finish', authRequired, async (req, res, next) => {
   try {
     const user = await getMe(req);
+    assertCanFinishMatch(user.telegramId);
     const side = sideOf(req.body?.side || user.side);
     const matchKind = req.body?.matchKind === 'live' ? 'live' : 'bot';
-    const requestedMatchId = String(req.body?.matchId || '');
+    const requestedMatchId = String(req.body?.matchId || '').slice(0, 80);
+    let persistedMatchId = requestedMatchId || undefined;
     let myScore = clamp(req.body?.myScore, 0, 500);
     let enemyScore = clamp(req.body?.enemyScore, 0, 500);
     let durationMs = clamp(req.body?.durationMs || 6700, 1000, 30000);
-    let opponentTelegramId = String(req.body?.opponentTelegramId || '');
+    let opponentTelegramId = String(req.body?.opponentTelegramId || '').slice(0, 64);
     if (matchKind === 'live') {
       const match = liveMatches.get(String(user.telegramId));
-      if (match && (!requestedMatchId || requestedMatchId === match.id)) {
-        const liveState = liveMatchState.get(match.id);
-        if (liveState) {
-          myScore = clamp(liveState.scores[String(user.telegramId)] ?? myScore, 0, 500);
-          enemyScore = clamp(liveState.scores[String(match.opponentTelegramId)] ?? enemyScore, 0, 500);
-          opponentTelegramId = String(match.opponentTelegramId);
-          durationMs = 6700;
-        }
-      }
+      if (!match || requestedMatchId !== match.id) throw Object.assign(new Error('Live match not found'), { status: 404 });
+      const liveState = liveMatchState.get(match.id);
+      if (!liveState) throw Object.assign(new Error('Live match state not found'), { status: 404 });
+      myScore = clamp(liveState.scores[String(user.telegramId)] ?? myScore, 0, 500);
+      enemyScore = clamp(liveState.scores[String(match.opponentTelegramId)] ?? enemyScore, 0, 500);
+      opponentTelegramId = String(match.opponentTelegramId);
+      durationMs = 6700;
+      persistedMatchId = match.id;
     }
     const tps = myScore / (durationMs / 1000);
-    const suspicious = tps > Number(process.env.MAX_TPS || 18) || myScore > Number(process.env.MAX_SCORE || 160);
+    const suspicious = tps > MAX_TPS || myScore > MAX_SCORE;
     const result = myScore === enemyScore ? 'tie' : (myScore > enemyScore ? 'win' : 'lose');
     const coinsReward = result === 'win' ? Math.floor(50 + myScore * 0.8) : (result === 'tie' ? 20 : 10);
     const guildScore = myScore + (result === 'win' ? 67 : result === 'tie' ? 20 : 6);
-    if (result === 'win') { user.wins += 1; user.currentStreak = user.streakType === 'win' ? user.currentStreak + 1 : 1; user.streakType = 'win'; }
-    else if (result === 'lose') { user.losses += 1; user.currentStreak = user.streakType === 'lose' ? user.currentStreak + 1 : 1; user.streakType = 'lose'; }
-    else { user.ties += 1; user.currentStreak = 0; user.streakType = 'tie'; }
     user.side = side;
-    user.totalTaps += myScore;
-    user.best = Math.max(user.best, myScore);
-    user.coins += suspicious ? 0 : coinsReward;
-    user.weeklyScore += suspicious ? 0 : (myScore + (result === 'win' ? 50 : 0));
+    if (!suspicious) {
+      if (result === 'win') { user.wins += 1; user.currentStreak = user.streakType === 'win' ? user.currentStreak + 1 : 1; user.streakType = 'win'; }
+      else if (result === 'lose') { user.losses += 1; user.currentStreak = user.streakType === 'lose' ? user.currentStreak + 1 : 1; user.streakType = 'lose'; }
+      else { user.ties += 1; user.currentStreak = 0; user.streakType = 'tie'; }
+      user.totalTaps += myScore;
+      user.best = Math.max(user.best, myScore);
+      user.coins += coinsReward;
+      user.weeklyScore += myScore + (result === 'win' ? 50 : 0);
+    }
     let guild = null;
     if (user.guildId && !suspicious) {
       guild = await Guild.findById(user.guildId);
       if (guild) { guild.score += guildScore; await guild.save(); }
     }
-    await Match.create({ userId: user._id, opponentTelegramId, matchKind, matchId: requestedMatchId || undefined, side, myScore, enemyScore, result, durationMs, tapsPerSecond: tps, coinsReward: suspicious ? 0 : coinsReward, guildScore: suspicious ? 0 : guildScore, suspicious, reason: suspicious ? `tps=${tps.toFixed(2)}` : '', week: weekKey() });
+    await Match.create({ userId: user._id, opponentTelegramId, matchKind, matchId: persistedMatchId, side, myScore, enemyScore, result, durationMs, tapsPerSecond: tps, coinsReward: suspicious ? 0 : coinsReward, guildScore: suspicious ? 0 : guildScore, suspicious, reason: suspicious ? `tps=${tps.toFixed(2)}` : '', week: weekKey() });
     await user.save();
     res.json({ user: serializeUser(user, guild || await getUserGuild(user)), result: { result, coinsReward: suspicious ? 0 : coinsReward, suspicious } });
   } catch (err) {
@@ -501,8 +544,8 @@ app.post('/api/guilds/create', authRequired, async (req, res, next) => {
     const user = await getMe(req);
     if (user.guildId) throw Object.assign(new Error('Already in guild'), { status: 409 });
     if (user.guildCooldownUntil && user.guildCooldownUntil.getTime() > now()) throw Object.assign(new Error('Guild cooldown active'), { status: 429 });
-    const name = String(req.body?.name || `${user.firstName || 'Alpha'} Gang`).replace(/[<>]/g, '').trim().slice(0, 24) || 'Alpha Gang';
-    const tag = String(req.body?.tag || name.replace(/[^a-z0-9]/gi, '').slice(0, 4) || 'GANG').toUpperCase().slice(0, 5);
+    const name = cleanPublicText(req.body?.name || `${user.firstName || 'Alpha'} Gang`, { max: 24, fallback: 'Alpha Gang' });
+    const tag = cleanPublicText(req.body?.tag || name.replace(/[^a-z0-9]/gi, '').slice(0, 4), { max: 5, fallback: 'GANG' }).replace(/[^A-Z0-9]/gi, '').toUpperCase() || 'GANG';
     const guild = await Guild.create({ name, tag, side: sideOf(req.body?.side || user.side), ownerId: user._id, week: weekKey() });
     user.guildId = guild._id;
     user.guildJoinedAt = new Date();
@@ -517,6 +560,7 @@ app.post('/api/guilds/join', authRequired, async (req, res, next) => {
     const user = await getMe(req);
     if (user.guildId) throw Object.assign(new Error('Already in guild'), { status: 409 });
     if (user.guildCooldownUntil && user.guildCooldownUntil.getTime() > now()) throw Object.assign(new Error('Guild cooldown active'), { status: 429 });
+    if (!isValidObjectId(req.body?.guildId)) throw Object.assign(new Error('Guild not found'), { status: 404 });
     const guild = await Guild.findById(req.body?.guildId);
     if (!guild) throw Object.assign(new Error('Guild not found'), { status: 404 });
     user.guildId = guild._id;
@@ -558,11 +602,15 @@ app.post('/api/shop/buy', authRequired, async (req, res, next) => {
     const ownedField = type === 'hand' ? 'ownedHands' : 'ownedDigits';
     const equipField = type === 'hand' ? 'hand' : 'digitStyle';
     if (!Array.isArray(user[ownedField])) user[ownedField] = type === 'hand' ? ['hand'] : ['classic'];
+    const price = Number(prices[id] || 0);
     if (!user[ownedField].includes(id)) {
-      const price = Number(prices[id] || 0);
-      if (user.coins < price) throw Object.assign(new Error('Not enough coins'), { status: 402 });
-      user.coins -= price;
-      user[ownedField].push(id);
+      const bought = await User.findOneAndUpdate(
+        { _id: user._id, coins: { $gte: price }, [ownedField]: { $ne: id } },
+        { $inc: { coins: -price }, $addToSet: { [ownedField]: id }, $set: { [equipField]: id } },
+        { new: true }
+      );
+      if (!bought) throw Object.assign(new Error('Not enough coins'), { status: 402 });
+      return res.json({ user: serializeUser(bought, await getUserGuild(bought)) });
     }
     user[equipField] = id;
     await user.save();
