@@ -10,7 +10,7 @@ const gameServer = new GameServer(db, GAME_CONFIG);
 const httpServer = http.createServer(createHttpHandler(gameServer));
 
 httpServer.on('upgrade', (req, socket, head) => {
-  const url = new URL(req.url || '/', 'http://localhost');
+  const url = new URL(req.url || '/', 'http://six-seven.internal');
   if (url.pathname !== '/ws') {
     socket.write('HTTP/1.1 404 Not Found\r\n\r\n');
     socket.destroy();
@@ -20,7 +20,7 @@ httpServer.on('upgrade', (req, socket, head) => {
 });
 
 httpServer.listen(GAME_CONFIG.port, () => {
-  console.log(`Six Seven Game server running at http://localhost:${GAME_CONFIG.port}`);
+  console.log(`Six Seven Game server listening on port ${GAME_CONFIG.port}`);
   console.log(`DB: ${GAME_CONFIG.dbFile}`);
 });
 

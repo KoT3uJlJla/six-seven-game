@@ -1,59 +1,90 @@
-# 67 — Telegram Mini App
+# 67 - Telegram Mini App
 
-Server-authoritative PvP tap game based on the "six seven" meme. Player chooses side `6` or `7`, waits through a 6.7-second matchmaking window, then plays a 6.7-second real-time tap round.
+Server-authoritative PvP tap game for Telegram Mini Apps. A player picks side `6` or `7`, waits through a 6.7-second matchmaking window, then plays a 6.7-second real-time tap battle.
 
-## Current build
+## Current Build
 
-**v0.2.1 — authoritative backend + optimized frontend**
+`v0.3.0` is a clean rebuild:
 
-- Matchmaking window is exactly **6.7 seconds**. If no live opponent is paired inside the window, backend creates a server-side bot.
-- PvP score is counted on the backend. The frontend sends only tap events and renders server snapshots/results.
-- Match result is finalized once on the backend and persisted to `data/six-seven-db.json`.
-- Weekly Top-100 and global 6-vs-7 war counters are read from backend state.
-- Home-screen taps spawn random `6`/`7` floaters tinted by selected side.
-- Battle effects are capped and optimized for mobile WebViews; low-power devices get lighter FX.
-- Runtime has no external backend dependency: the WebSocket server is implemented with Node built-ins.
+- Client code lives in small ES modules under `src/`.
+- The visual layer stays in `index.html`, `styles.css`, and `assets/`.
+- React, Framer Motion, legacy runtime patches, release scripts, duplicate backends, and bundled zip artifacts were removed.
+- Matchmaking uses the backend first and always falls back to a bot after the search window if no live player is available.
+- The matching screen shows only the countdown.
+- The Mini App resolves the production API from `window.SIX_SEVEN_API_BASE`; localhost is only a local development fallback.
+- Cloudflare Worker injects config only. It does not inject runtime hotfix scripts.
 
-## Run
+## Stack
+
+- Frontend: Vite + native ES modules
+- Backend: Node ESM using built-in HTTP/WebSocket primitives
+- Persistence: JSON file database for MVP state
+- Hosting: Cloudflare Pages for Mini App assets, Render or another Node host for the realtime server
+
+## Run Locally
 
 ```bash
-npm start
-# http://localhost:3000
+npm install
+npm run dev
 ```
 
-Optional:
+Open the local URL printed by the server. Localhost is only for development; Telegram production should point to the Cloudflare Pages URL.
+
+## Build
 
 ```bash
-PORT=8080 SIX_SEVEN_DB=/var/lib/six-seven/db.json npm start
+npm run build
 npm run check
 ```
 
-## Project layout
+When `dist/index.html` exists, `server.js` serves the built client. Without `dist`, it serves the source files for development.
+
+## Layout
 
 ```text
-index.html      # existing screen markup
-styles.css      # existing visual design
-app.js          # optimized authoritative frontend client
-server.mjs      # HTTP API, static hosting, WebSocket PvP, JSON DB
-assets/         # hand and digit skins
+index.html        # Mini App markup and screen structure
+styles.css        # Existing visual design plus runtime state classes
+src/              # Clean client runtime modules
+server/           # Realtime game server, DB, static handler
+server.js         # Node entrypoint
+_worker.js        # Cloudflare Pages config injection
+assets/           # Hands, digits, share assets
 ```
 
-## Realtime protocol
+## Realtime Protocol
 
-Client → server:
+Client to server:
 
-- `hello` — identifies player profile.
-- `matchmaking:join` — enters queue with selected side and cosmetics.
-- `matchmaking:cancel` — leaves queue.
-- `tap` — sends one tap event. Score is not trusted from the client.
+- `hello` identifies the player profile and cosmetics.
+- `queue` enters the live matchmaking queue.
+- `cancel_queue` leaves matchmaking.
+- `tap` sends one tap event; score is counted on the server.
+- `get_top` requests leaderboard state.
 
-Server → client:
+Server to client:
 
-- `matchmaking:queued` — queue ticket with exact deadline.
-- `match:found` — authoritative match schedule and participants.
-- `match:score` — server score snapshot every 67 ms.
-- `match:result` — final persisted match result and updated player state.
+- `hello_required` asks the client to identify itself.
+- `player_state` returns profile, leaderboard, global war, and config.
+- `queue_state` returns the authoritative matchmaking deadline.
+- `match_start` schedules a battle.
+- `match_live` opens the tap window.
+- `score_update` streams score snapshots.
+- `match_result` returns the final persisted result.
 
-## Production notes
+## Production Config
 
-The JSON DB is sufficient for MVP/local testing. Before TG Stars prize payouts, replace it with PostgreSQL/Redis, validate Telegram `initData`, add bot-token payment flows, add anti-multiaccount checks, and move weekly payout snapshots to a locked admin job.
+Cloudflare Pages should expose:
+
+```text
+SIX_SEVEN_API_BASE=https://your-node-realtime-service.example.com
+SIX_SEVEN_BOT_USERNAME=your_bot_username
+SIX_SEVEN_APP_NAME=your_mini_app_short_name
+```
+
+The backend accepts:
+
+```text
+NODE_VERSION=22
+PORT=3000
+SIX_SEVEN_DB=data/six-seven-db.json
+```

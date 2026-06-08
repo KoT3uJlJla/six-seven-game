@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const DIST_ROOT = path.join(ROOT, 'dist');
 const MIME = new Map([
   ['.html', 'text/html; charset=utf-8'],
   ['.js', 'application/javascript; charset=utf-8'],
@@ -21,9 +22,18 @@ function sendJson(res, status, payload) {
   res.end(JSON.stringify(payload));
 }
 
+function publicRoot() {
+  return fs.existsSync(path.join(DIST_ROOT, 'index.html')) ? DIST_ROOT : ROOT;
+}
+
+function isInside(root, target) {
+  const relative = path.relative(root, target);
+  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+}
+
 export function createHttpHandler(gameServer) {
   return (req, res) => {
-    const url = new URL(req.url || '/', 'http://localhost');
+    const url = new URL(req.url || '/', 'http://six-seven.internal');
     if (url.pathname === '/api/health') {
       return sendJson(res, 200, { ok: true, serverTs: Date.now() });
     }
@@ -41,10 +51,11 @@ export function createHttpHandler(gameServer) {
       return res.end('Method Not Allowed');
     }
 
+    const root = publicRoot();
     const requested = url.pathname === '/' ? '/index.html' : decodeURIComponent(url.pathname);
     const normalized = path.normalize(requested).replace(/^([.][.][\/])+/, '');
-    const filePath = path.join(ROOT, normalized);
-    if (!filePath.startsWith(ROOT)) {
+    const filePath = path.join(root, normalized);
+    if (!isInside(root, filePath)) {
       res.writeHead(403);
       return res.end('Forbidden');
     }

@@ -1,24 +1,20 @@
 {
   "name": "sixseven",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "scripts": {
     "dev": "node server.js",
     "start": "node server.js",
     "client:dev": "vite",
-    "build": "vite build"
-  },
-  "dependencies": {
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "framer-motion": "^11.0.0"
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0",
+    "check": "node --check server.js && node --check server/config.js && node --check server/database.js && node --check server/game-server.js && node --check server/realtime.js && node --check server/static.js"
   },
   "devDependencies": {
-    "vite": "^5.4.0",
-    "@vitejs/plugin-react": "^4.3.1"
+    "vite": "^8.0.16"
   },
   "engines": {
-    "node": ">=20"
+    "node": "^20.19.0 || >=22.12.0"
   }
 }

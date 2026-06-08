@@ -1,1 +1,0 @@
-Desktop guard patch marker. If this file exists, redeploy Cloudflare Pages after app.js is updated.
