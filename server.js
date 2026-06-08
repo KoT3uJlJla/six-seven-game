@@ -1,0 +1,28 @@
+import http from 'node:http';
+import { GAME_CONFIG } from './server/config.js';
+import { GameDatabase } from './server/database.js';
+import { GameServer } from './server/game-server.js';
+import { handleUpgrade } from './server/realtime.js';
+import { createHttpHandler } from './server/static.js';
+
+const db = new GameDatabase(GAME_CONFIG.dbFile);
+const gameServer = new GameServer(db, GAME_CONFIG);
+const httpServer = http.createServer(createHttpHandler(gameServer));
+
+httpServer.on('upgrade', (req, socket, head) => {
+  const url = new URL(req.url || '/', 'http://localhost');
+  if (url.pathname !== '/ws') {
+    socket.write('HTTP/1.1 404 Not Found\r\n\r\n');
+    socket.destroy();
+    return;
+  }
+  handleUpgrade(req, socket, head, peer => gameServer.attach(peer, req));
+});
+
+httpServer.listen(GAME_CONFIG.port, () => {
+  console.log(`Six Seven Game server running at http://localhost:${GAME_CONFIG.port}`);
+  console.log(`DB: ${GAME_CONFIG.dbFile}`);
+});
+
+process.on('SIGINT', () => httpServer.close(() => process.exit(0)));
+process.on('SIGTERM', () => httpServer.close(() => process.exit(0)));
