@@ -1,6 +1,8 @@
 node_modules/
 backend/node_modules/
 dist/
+data/*.json
+data/*.broken-*
 *.zip
 .DS_Store
 .env
