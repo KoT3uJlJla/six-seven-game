@@ -32,10 +32,6 @@ export default {
       html = `${configScript}${html}`;
     }
 
-    if (!html.includes('release-image-rescue.js')) {
-      html = html.replace('</body>', '  <script src="release-image-rescue.js"></script>\n</body>');
-    }
-
     return new Response(html, {
       status: asset.status,
       headers: {

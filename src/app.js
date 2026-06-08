@@ -1133,20 +1133,36 @@ export function bootGame() {
     haptic.warning();
   }
 
-  function shareText(label, url = location.href) {
-    const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(label)}`;
+  function telegramBotUsername() {
+    return String(window.SIX_SEVEN_BOT_USERNAME || '').replace(/^@/, '').replace(/[^A-Za-z0-9_]/g, '');
+  }
+
+  function telegramAppName() {
+    return String(window.SIX_SEVEN_APP_NAME || '').replace(/^\/+|\/+$/g, '').replace(/[^A-Za-z0-9_]/g, '');
+  }
+
+  function telegramAppLink(startParam = '') {
+    const bot = telegramBotUsername();
+    if (!bot) return '';
+
+    const app = telegramAppName();
+    const base = app ? `https://t.me/${bot}/${encodeURIComponent(app)}` : `https://t.me/${bot}`;
+    return startParam ? `${base}?startapp=${encodeURIComponent(startParam)}` : base;
+  }
+
+  function shareText(label, url = referralLink() || telegramAppLink()) {
+    const params = new URLSearchParams();
+    if (url) params.set('url', url);
+    params.set('text', label);
+    const shareUrl = `https://t.me/share/url?${params.toString()}`;
     if (tg?.openTelegramLink) tg.openTelegramLink(shareUrl);
     else window.open(shareUrl, '_blank', 'noopener,noreferrer');
+    if (!url) showToast('Telegram bot link is not configured');
   }
 
   function referralLink() {
     const param = `r_${state.referrals.code}_${state.side}`;
-    const bot = String(window.SIX_SEVEN_BOT_USERNAME || '').replace(/^@/, '');
-    const app = String(window.SIX_SEVEN_APP_NAME || '');
-    if (bot) return `https://t.me/${bot}${app ? `/${encodeURIComponent(app)}` : ''}?startapp=${param}`;
-    const url = new URL(location.href);
-    url.searchParams.set('tgWebAppStartParam', param);
-    return url.toString();
+    return telegramAppLink(param);
   }
 
   function bindEvents() {
