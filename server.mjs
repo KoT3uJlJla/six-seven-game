@@ -6,60 +6,378 @@ import { fileURLToPath } from 'node:url';
 import WebSocket, { WebSocketServer } from 'ws';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
-const CFG = Object.freeze({ port: Number(process.env.PORT || 3000), roundMs: 6700, matchmakingMs: 6700, startDelayMs: 950, tickMs: 67, tapCapPerSec: 42, dbFile: process.env.SIX_SEVEN_DB || path.join(ROOT, 'data', 'six-seven-db.json') });
-const HANDS = ['hand','clown','cube','spanch','devil','roblox','robo'];
-const DIGITS = ['classic','clown','devil','robo'];
-const SHOP = { hands: { hand:0, clown:500, cube:700, spanch:1200, devil:1500, roblox:2400, robo:3000 }, digits: { classic:0, clown:650, devil:1100, robo:1700 } };
-const PRIZES = { 1:2400, 2:1400, 3:900, 67:694 };
-for (let i=4;i<=10;i++) PRIZES[i]=200;
-for (let i=11;i<=25;i++) PRIZES[i]=85;
-for (let i=26;i<=50;i++) PRIZES[i]=40;
-for (let i=51;i<=100;i++) if (i!==67) PRIZES[i]=19;
-const RIVALS = ['ZenBoy','Ksu_Lab','NoChill','CR1S','mishakek','Bruh666','Lola.exe','taptap','Vibez','pluh','GYAT','Spectre','Cooked67','AuraDebt','BloxKid'];
-const MIME = { '.html':'text/html; charset=utf-8', '.js':'text/javascript; charset=utf-8', '.css':'text/css; charset=utf-8', '.png':'image/png', '.jpg':'image/jpeg', '.jpeg':'image/jpeg', '.svg':'image/svg+xml', '.json':'application/json; charset=utf-8', '.ico':'image/x-icon' };
+const CFG = Object.freeze({
+  port: Number(process.env.PORT || 3000),
+  roundMs: 6700,
+  matchmakingMs: 6700,
+  startDelayMs: 950,
+  tickMs: 67,
+  tapCapPerSec: 35,
+  dbFile: process.env.SIX_SEVEN_DB || path.join(ROOT, 'data', 'six-seven-db.json'),
+});
+
+const HANDS = ['hand', 'clown', 'cube', 'spanch', 'devil', 'roblox', 'robo'];
+const DIGITS = ['classic', 'clown', 'devil', 'robo'];
+const SHOP = {
+  hands: { hand: 0, clown: 500, cube: 700, spanch: 1200, devil: 1500, roblox: 2400, robo: 3000 },
+  digits: { classic: 0, clown: 650, devil: 1100, robo: 1700 },
+};
+const PRIZES = { 1: 2400, 2: 1400, 3: 900, 67: 694 };
+for (let i = 4; i <= 10; i++) PRIZES[i] = 200;
+for (let i = 11; i <= 25; i++) PRIZES[i] = 85;
+for (let i = 26; i <= 50; i++) PRIZES[i] = 40;
+for (let i = 51; i <= 100; i++) if (i !== 67) PRIZES[i] = 19;
+
+const RIVALS = ['ZenBoy', 'Ksu_Lab', 'NoChill', 'CR1S', 'mishakek', 'Bruh666', 'Lola.exe', 'taptap', 'Vibez', 'pluh', 'GYAT', 'Spectre', 'Cooked67', 'AuraDebt', 'BloxKid'];
+const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.svg': 'image/svg+xml', '.json': 'application/json; charset=utf-8', '.ico': 'image/x-icon' };
+
 const now = () => Date.now();
-const uid = p => `${p}_${crypto.randomBytes(8).toString('hex')}`;
-const pick = a => a[Math.floor(Math.random()*a.length)] || a[0];
-const side = v => Number(v) === 7 ? 7 : 6;
-const opp = v => side(v) === 7 ? 6 : 7;
-const cleanId = v => String(v || '').replace(/[^a-zA-Z0-9_:-]/g,'').slice(0,72) || uid('guest');
-const cleanName = v => String(v || 'Alpha67').replace(/[<>]/g,'').trim().slice(0,24) || 'Alpha67';
-const cleanHand = v => HANDS.includes(String(v)) ? String(v) : 'hand';
-const cleanDigit = v => DIGITS.includes(String(v)) ? String(v) : 'classic';
+const uid = prefix => `${prefix}_${crypto.randomBytes(8).toString('hex')}`;
+const pick = list => list[Math.floor(Math.random() * list.length)] || list[0];
+const side = value => Number(value) === 7 ? 7 : 6;
+const opp = value => side(value) === 7 ? 6 : 7;
+const cleanId = value => String(value || '').replace(/[^a-zA-Z0-9_:-]/g, '').slice(0, 72) || uid('guest');
+const cleanName = value => String(value || 'Alpha67').replace(/[<>]/g, '').trim().slice(0, 24) || 'Alpha67';
+const cleanHand = value => HANDS.includes(String(value)) ? String(value) : 'hand';
+const cleanDigit = value => DIGITS.includes(String(value)) ? String(value) : 'classic';
 
 class Store {
-  constructor(file) { this.file=file; this.data={ version:1, players:{}, matches:{}, globalWar:{ six:0, seven:0 }, updatedAt:now() }; this.load(); }
-  load() { try { if (fs.existsSync(this.file)) this.data = { ...this.data, ...JSON.parse(fs.readFileSync(this.file,'utf8')) }; } catch { try { fs.renameSync(this.file, `${this.file}.broken-${now()}`); } catch {} } this.data.players ||= {}; this.data.matches ||= {}; this.data.globalWar ||= { six:0, seven:0 }; this.save(); }
-  save() { fs.mkdirSync(path.dirname(this.file), { recursive:true }); this.data.updatedAt=now(); const tmp=`${this.file}.${process.pid}.tmp`; fs.writeFileSync(tmp, JSON.stringify(this.data,null,2)); fs.renameSync(tmp, this.file); }
-  player(profile) { const id=cleanId(profile.playerId); const existing=this.data.players[id]; const base={ wins:0, losses:0, ties:0, best:0, totalTaps:0, currentStreak:0, streakType:'none' }; if (!existing) this.data.players[id]={ id, name:cleanName(profile.name), side:side(profile.side), hand:cleanHand(profile.hand), digitStyle:cleanDigit(profile.digitStyle), coins:250, inventory:{ hands:['hand'], digits:['classic'] }, stats:base, weeklyScore:0, createdAt:now(), updatedAt:now() }; const p=this.data.players[id]; p.name=cleanName(profile.name || p.name); p.side=side(profile.side || p.side); p.hand=cleanHand(profile.hand || p.hand); p.digitStyle=cleanDigit(profile.digitStyle || p.digitStyle); p.inventory={ hands:Array.from(new Set(['hand', ...(p.inventory?.hands||[])])), digits:Array.from(new Set(['classic', ...(p.inventory?.digits||[])])) }; p.stats={ ...base, ...(p.stats||{}) }; p.updatedAt=now(); this.save(); return p; }
-  buy(playerId, kind, itemId) { const bucket = kind === 'digits' ? 'digits' : 'hands'; if (!(itemId in SHOP[bucket])) throw new Error('Unknown item'); const p=this.player({ playerId }); p.inventory[bucket] ||= bucket==='hands' ? ['hand'] : ['classic']; if (p.inventory[bucket].includes(itemId)) return p; const price=SHOP[bucket][itemId]; if (p.coins < price) throw new Error('Not enough coins'); p.coins -= price; p.inventory[bucket].push(itemId); this.save(); return p; }
-  equip(playerId, kind, itemId) { const bucket = kind === 'digits' ? 'digits' : 'hands'; const p=this.player({ playerId }); if (!p.inventory[bucket]?.includes(itemId)) throw new Error('Item not owned'); if (bucket === 'hands') p.hand=cleanHand(itemId); else p.digitStyle=cleanDigit(itemId); this.save(); return p; }
-  finalize(match) { if (this.data.matches[match.id]?.status === 'complete') return this.data.matches[match.id]; const scores={...match.scores}; const slots=match.participants.map(p=>p.slot); const winner = scores[slots[0]] === scores[slots[1]] ? null : (scores[slots[0]] > scores[slots[1]] ? slots[0] : slots[1]); const record={ id:match.id, status:'complete', bot:match.bot, createdAt:match.createdAt, startsAt:match.startsAt, endsAt:match.endsAt, completedAt:now(), scores, winnerSlot:winner, jackpots:{...match.jackpots}, participants:match.participants.map(p=>({ slot:p.slot, playerId:p.playerId, name:p.name, side:p.side, hand:p.hand, digitStyle:p.digitStyle, bot:p.bot })) }; this.data.matches[match.id]=record; for (const part of match.participants) { if (part.bot || !part.playerId) continue; const p=this.player(part); const s=Number(scores[part.slot]||0); const win=winner===part.slot, tie=winner===null; p.stats.totalTaps += s; p.stats.best=Math.max(p.stats.best,s); if (win) { p.stats.wins++; p.stats.currentStreak=p.stats.streakType==='win'?p.stats.currentStreak+1:1; p.stats.streakType='win'; } else if (tie) { p.stats.ties++; p.stats.currentStreak=0; p.stats.streakType='tie'; } else { p.stats.losses++; p.stats.currentStreak=p.stats.streakType==='lose'?p.stats.currentStreak+1:1; p.stats.streakType='lose'; } p.coins += win ? 50 + Math.floor(s*.8) : tie ? 20 : 10; p.weeklyScore += s + (win?50:tie?10:0) + (s===67?67:0); if (part.side===7) this.data.globalWar.seven += s + (win?20:0); else this.data.globalWar.six += s + (win?20:0); p.updatedAt=now(); } this.save(); return record; }
-  top(limit=100) { return Object.values(this.data.players).sort((a,b)=>(b.weeklyScore||0)-(a.weeklyScore||0)||a.name.localeCompare(b.name)).slice(0,limit).map((p,i)=>({ rank:i+1, id:p.id, name:p.name, side:p.side, score:p.weeklyScore||0, prizeStars:PRIZES[i+1]||0 })); }
-  war() { return { six:Number(this.data.globalWar.six||0), seven:Number(this.data.globalWar.seven||0) }; }
+  constructor(file) {
+    this.file = file;
+    this.data = { version: 2, players: {}, matches: {}, globalWar: { six: 0, seven: 0 }, updatedAt: now() };
+    this.load();
+  }
+  load() {
+    try {
+      if (fs.existsSync(this.file)) this.data = { ...this.data, ...JSON.parse(fs.readFileSync(this.file, 'utf8')) };
+    } catch {
+      try { fs.renameSync(this.file, `${this.file}.broken-${now()}`); } catch {}
+    }
+    this.data.players ||= {};
+    this.data.matches ||= {};
+    this.data.globalWar ||= { six: 0, seven: 0 };
+    this.save();
+  }
+  save() {
+    fs.mkdirSync(path.dirname(this.file), { recursive: true });
+    this.data.updatedAt = now();
+    const tmp = `${this.file}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(this.data, null, 2));
+    fs.renameSync(tmp, this.file);
+  }
+  player(profile = {}) {
+    const id = cleanId(profile.playerId);
+    const base = { wins: 0, losses: 0, ties: 0, best: 0, totalTaps: 0, currentStreak: 0, streakType: 'none' };
+    if (!this.data.players[id]) {
+      this.data.players[id] = { id, name: cleanName(profile.name), side: side(profile.side), hand: cleanHand(profile.hand), digitStyle: cleanDigit(profile.digitStyle), coins: 250, inventory: { hands: ['hand'], digits: ['classic'] }, stats: { ...base }, weeklyScore: 0, createdAt: now(), updatedAt: now() };
+    }
+    const player = this.data.players[id];
+    player.name = cleanName(profile.name || player.name);
+    player.side = side(profile.side || player.side);
+    player.hand = cleanHand(profile.hand || player.hand);
+    player.digitStyle = cleanDigit(profile.digitStyle || player.digitStyle);
+    player.inventory = { hands: Array.from(new Set(['hand', ...(player.inventory?.hands || [])])), digits: Array.from(new Set(['classic', ...(player.inventory?.digits || [])])) };
+    player.stats = { ...base, ...(player.stats || {}) };
+    player.coins = Number(player.coins || 0);
+    player.weeklyScore = Number(player.weeklyScore || 0);
+    player.updatedAt = now();
+    this.save();
+    return player;
+  }
+  buy(playerId, kind, itemId) {
+    const bucket = kind === 'digits' ? 'digits' : 'hands';
+    if (!(itemId in SHOP[bucket])) throw new Error('Unknown item');
+    const player = this.player({ playerId });
+    if (player.inventory[bucket].includes(itemId)) return player;
+    const price = SHOP[bucket][itemId];
+    if (player.coins < price) throw new Error('Not enough coins');
+    player.coins -= price;
+    player.inventory[bucket].push(itemId);
+    this.save();
+    return player;
+  }
+  equip(playerId, kind, itemId) {
+    const bucket = kind === 'digits' ? 'digits' : 'hands';
+    const player = this.player({ playerId });
+    if (!player.inventory[bucket].includes(itemId)) throw new Error('Item not owned');
+    if (bucket === 'hands') player.hand = cleanHand(itemId);
+    else player.digitStyle = cleanDigit(itemId);
+    this.save();
+    return player;
+  }
+  finalize(match) {
+    if (this.data.matches[match.id]?.status === 'complete') return this.data.matches[match.id];
+    const scores = { ...match.scores };
+    const slots = match.participants.map(part => part.slot);
+    const winner = scores[slots[0]] === scores[slots[1]] ? null : (scores[slots[0]] > scores[slots[1]] ? slots[0] : slots[1]);
+    const record = { id: match.id, status: 'complete', bot: match.bot, createdAt: match.createdAt, startsAt: match.startsAt, endsAt: match.endsAt, completedAt: now(), scores, winnerSlot: winner, jackpots: { ...match.jackpots }, participants: match.participants.map(part => ({ slot: part.slot, playerId: part.playerId, name: part.name, side: part.side, hand: part.hand, digitStyle: part.digitStyle, bot: part.bot })), playerStates: {} };
+    this.data.matches[match.id] = record;
+    for (const part of match.participants) {
+      if (part.bot || !part.playerId) continue;
+      const player = this.player(part);
+      const score = Number(scores[part.slot] || 0);
+      const win = winner === part.slot;
+      const tie = winner === null;
+      player.stats.totalTaps += score;
+      player.stats.best = Math.max(player.stats.best, score);
+      if (win) { player.stats.wins++; player.stats.currentStreak = player.stats.streakType === 'win' ? player.stats.currentStreak + 1 : 1; player.stats.streakType = 'win'; }
+      else if (tie) { player.stats.ties++; player.stats.currentStreak = 0; player.stats.streakType = 'tie'; }
+      else { player.stats.losses++; player.stats.currentStreak = player.stats.streakType === 'lose' ? player.stats.currentStreak + 1 : 1; player.stats.streakType = 'lose'; }
+      player.coins += win ? 50 + Math.floor(score * 0.8) : (tie ? 20 : 10);
+      player.weeklyScore += score + (win ? 50 : tie ? 10 : 0) + (score === 67 ? 67 : 0);
+      if (part.side === 7) this.data.globalWar.seven += score + (win ? 20 : 0);
+      else this.data.globalWar.six += score + (win ? 20 : 0);
+      player.updatedAt = now();
+      record.playerStates[part.slot] = player;
+    }
+    this.save();
+    return record;
+  }
+  top(limit = 100) {
+    return Object.values(this.data.players).sort((a, b) => (b.weeklyScore || 0) - (a.weeklyScore || 0) || a.name.localeCompare(b.name)).slice(0, limit).map((player, index) => ({ rank: index + 1, id: player.id, name: player.name, side: player.side, score: player.weeklyScore || 0, prizeStars: PRIZES[index + 1] || 0 }));
+  }
+  war() { return { six: Number(this.data.globalWar.six || 0), seven: Number(this.data.globalWar.seven || 0) }; }
 }
+
 const store = new Store(CFG.dbFile);
-function sendJson(res, code, body) { const data=Buffer.from(JSON.stringify(body)); res.writeHead(code,{ 'content-type':MIME['.json'], 'content-length':data.length }); res.end(data); }
-function readBody(req) { return new Promise((resolve,reject)=>{ let raw=''; req.on('data', c=>{ raw+=c; if(raw.length>1e6) reject(new Error('too_large')); }); req.on('end',()=>{ try { resolve(raw?JSON.parse(raw):{}); } catch { reject(new Error('bad_json')); } }); }); }
-async function api(req,res,url) { try { if (url.pathname==='/api/health') return sendJson(res,200,{ ok:true, serverNow:now() }); if (url.pathname==='/api/config') return sendJson(res,200,{ matchmakingMs:CFG.matchmakingMs, roundMs:CFG.roundMs, prizePoolStars:10000 }); if (url.pathname==='/api/global-war') return sendJson(res,200,store.war()); if (url.pathname==='/api/leaderboard/weekly') return sendJson(res,200,{ prizePoolStars:10000, prizes:PRIZES, players:store.top(100) }); if (url.pathname==='/api/me') return sendJson(res,200,{ player:store.player({ playerId:url.searchParams.get('playerId'), name:url.searchParams.get('name'), side:url.searchParams.get('side') }) }); if (req.method==='POST' && url.pathname==='/api/profile') return sendJson(res,200,{ player:store.player(await readBody(req)) }); if (req.method==='POST' && url.pathname==='/api/shop/buy') { const b=await readBody(req); return sendJson(res,200,{ player:store.buy(b.playerId,b.kind,b.itemId) }); } if (req.method==='POST' && url.pathname==='/api/shop/equip') { const b=await readBody(req); return sendJson(res,200,{ player:store.equip(b.playerId,b.kind,b.itemId) }); } sendJson(res,404,{ error:'not_found' }); } catch (e) { sendJson(res,400,{ error:e.message || 'bad_request' }); } }
-function staticFile(req,res,url) { let target=decodeURIComponent(url.pathname); if (target==='/' || target==='') target='/index.html'; const file=path.normalize(path.join(ROOT,target)); if (!file.startsWith(ROOT)) return sendJson(res,403,{ error:'forbidden' }); fs.readFile(file,(err,buf)=>{ if (err) return fs.readFile(path.join(ROOT,'index.html'),(e,html)=>{ if(e) return sendJson(res,404,{ error:'not_found' }); res.writeHead(200,{ 'content-type':MIME['.html'] }); res.end(html); }); res.writeHead(200,{ 'content-type':MIME[path.extname(file).toLowerCase()] || 'application/octet-stream', 'cache-control': path.basename(file)==='index.html' ? 'no-store' : 'public, max-age=86400' }); res.end(buf); }); }
-const server=http.createServer((req,res)=>{ const url=new URL(req.url,'http://localhost'); if (url.pathname.startsWith('/api/')) return api(req,res,url); staticFile(req,res,url); });
-const wss=new WebSocketServer({ noServer:true });
-server.on('upgrade',(req,socket,head)=>{ const url=new URL(req.url,'http://localhost'); if(url.pathname!=='/ws') return socket.destroy(); wss.handleUpgrade(req,socket,head,ws=>wss.emit('connection',ws,req)); });
-const sessions=new Map(), tickets=new Map(), matches=new Map();
-function send(session,payload) { if(!session || session.ws.readyState!==WebSocket.OPEN) return; try { session.ws.send(JSON.stringify({ serverNow:now(), ...payload })); } catch {} }
-function removeTicket(id, reason='cancelled') { const t=tickets.get(id); if(!t) return; clearTimeout(t.timeout); tickets.delete(id); const s=sessions.get(t.sessionId); if (s?.ticketId===id) s.ticketId=''; if (reason && reason!=='matched') send(s,{ type:'matchmaking:cancelled', reason }); }
-function clearTickets(sessionId) { for (const t of [...tickets.values()]) if (t.sessionId===sessionId) removeTicket(t.id,'disconnected'); }
-function participant(session, slot) { const p=session.profile; return { slot, sessionId:session.id, playerId:cleanId(p.playerId), name:cleanName(p.name), side:side(p.side), hand:cleanHand(p.hand), digitStyle:cleanDigit(p.digitStyle), bot:false, tapTimes:[] }; }
-function botFor(sideValue, slot) { return { slot, sessionId:'', playerId:'', name:pick(RIVALS), side:side(sideValue), hand:pick(HANDS), digitStyle:pick(DIGITS), bot:true, botPower:.85+Math.random()*.38, tapTimes:[] }; }
-function matchView(m, sessionId) { return { id:m.id, startsAt:m.startsAt, endsAt:m.endsAt, durationMs:CFG.roundMs, scores:{...m.scores}, youSlot:m.participants.find(p=>p.sessionId===sessionId)?.slot || null, participants:m.participants.map(p=>({ slot:p.slot, name:p.name, side:p.side, hand:p.hand, digitStyle:p.digitStyle, bot:p.bot })), sequence:m.sequence }; }
-function broadcast(m,payload) { for (const p of m.participants) if (p.sessionId) send(sessions.get(p.sessionId),payload); }
-function createMatch(parts, bot=false) { const createdAt=now(); const m={ id:uid('match'), bot, status:'countdown', createdAt, startsAt:createdAt+CFG.startDelayMs, endsAt:createdAt+CFG.startDelayMs+CFG.roundMs, participants:parts, scores:Object.fromEntries(parts.map(p=>[p.slot,0])), jackpots:Object.fromEntries(parts.map(p=>[p.slot,false])), sequence:0, interval:null, endTimer:null, botTimers:[] }; matches.set(m.id,m); for (const p of parts) { const s=sessions.get(p.sessionId); if(s){ s.activeMatchId=m.id; s.ticketId=''; send(s,{ type:'match:found', match:matchView(m,s.id) }); } } m.interval=setInterval(()=>scoreTick(m),CFG.tickMs); m.endTimer=setTimeout(()=>finalize(m.id), Math.max(0,m.endsAt-now()+35)); for (const p of parts.filter(x=>x.bot)) scheduleBot(m,p.slot,Math.max(0,m.startsAt-now())); }
-function scoreTick(m) { if(!m || m.status==='complete') return; if(now()>=m.startsAt && now()<m.endsAt) m.status='live'; broadcast(m,{ type:'match:score', matchId:m.id, scores:{...m.scores}, sequence:m.sequence, startsAt:m.startsAt, endsAt:m.endsAt }); }
-function applyTap(m, slot, bot=false) { const t=now(); if(!m || m.status==='complete' || t<m.startsAt || t>=m.endsAt) return false; const p=m.participants.find(x=>x.slot===slot); if(!p) return false; if(!bot){ p.tapTimes=(p.tapTimes||[]).filter(x=>t-x<1000); if(p.tapTimes.length>=CFG.tapCapPerSec) return false; p.tapTimes.push(t); } m.status='live'; m.scores[slot]=(m.scores[slot]||0)+1; m.sequence++; if(m.scores[slot]===67) m.jackpots[slot]=true; return true; }
-function scheduleBot(m,slot,delay) { const timer=setTimeout(()=>{ if(!m || m.status==='complete' || now()>=m.endsAt) return; if(now()>=m.startsAt) applyTap(m,slot,true); const p=m.participants.find(x=>x.slot===slot); const base=70+Math.random()*95; const rush=now()>m.endsAt-1300?.78:1; scheduleBot(m,slot,Math.max(48,base*rush/Number(p?.botPower||1))); },delay); m.botTimers.push(timer); }
-function finalize(id) { const m=matches.get(id); if(!m || m.status==='complete') return; m.status='complete'; clearInterval(m.interval); clearTimeout(m.endTimer); for (const t of m.botTimers) clearTimeout(t); scoreTick(m); const record=store.finalize(m); for (const p of m.participants) { const s=sessions.get(p.sessionId); if(!s) continue; s.activeMatchId=''; send(s,{ type:'match:result', match:record, player:p.playerId ? store.player(p) : null }); } setTimeout(()=>matches.delete(id),30000); }
-function findOpponent(sideValue, ownSessionId) { const wanted=opp(sideValue); return [...tickets.values()].filter(t=>t.side===wanted && t.sessionId!==ownSessionId).sort((a,b)=>a.enqueuedAt-b.enqueuedAt)[0] || null; }
-function queue(session, profile) { clearTickets(session.id); if(session.activeMatchId) return send(session,{ type:'error', code:'active_match' }); session.profile={ playerId:cleanId(profile.playerId), name:cleanName(profile.name), side:side(profile.side), hand:cleanHand(profile.hand), digitStyle:cleanDigit(profile.digitStyle) }; store.player(session.profile); let found=findOpponent(session.profile.side,session.id); while(found){ const other=sessions.get(found.sessionId); removeTicket(found.id, other?'matched':'stale'); if(other?.profile && !other.activeMatchId){ createMatch([participant(other,'a'), participant(session,'b')], false); return; } found=findOpponent(session.profile.side,session.id); } const ticket={ id:uid('ticket'), sessionId:session.id, side:session.profile.side, enqueuedAt:now(), deadlineAt:now()+CFG.matchmakingMs, timeout:null }; ticket.timeout=setTimeout(()=>{ if(!tickets.has(ticket.id)) return; tickets.delete(ticket.id); const fresh=sessions.get(ticket.sessionId); if(!fresh || fresh.activeMatchId) return; fresh.ticketId=''; createMatch([participant(fresh,'a'), botFor(opp(fresh.profile.side),'b')], true); }, CFG.matchmakingMs); tickets.set(ticket.id,ticket); session.ticketId=ticket.id; send(session,{ type:'matchmaking:queued', ticketId:ticket.id, deadlineAt:ticket.deadlineAt, matchmakingMs:CFG.matchmakingMs }); }
-wss.on('connection', ws => { const s={ id:uid('session'), ws, ticketId:'', activeMatchId:'', profile:null }; sessions.set(s.id,s); send(s,{ type:'hello:required', sessionId:s.id, config:{ roundMs:CFG.roundMs, matchmakingMs:CFG.matchmakingMs } }); const sync=setInterval(()=>send(s,{ type:'server:sync' }),2000); ws.on('message', raw=>{ let msg; try { msg=JSON.parse(String(raw)); } catch { return send(s,{ type:'error', code:'bad_json' }); } if(msg.type==='hello'){ s.profile={ playerId:cleanId(msg.playerId), name:cleanName(msg.name), side:side(msg.side), hand:cleanHand(msg.hand), digitStyle:cleanDigit(msg.digitStyle) }; return send(s,{ type:'hello:ack', sessionId:s.id, player:store.player(s.profile) }); } if(msg.type==='matchmaking:join') return queue(s,msg.profile||msg); if(msg.type==='matchmaking:cancel') return removeTicket(s.ticketId,'cancelled'); if(msg.type==='tap'){ const m=matches.get(msg.matchId || s.activeMatchId); if(!m || m.id!==s.activeMatchId) return; const p=m.participants.find(x=>x.sessionId===s.id); if(p && applyTap(m,p.slot,false)) send(s,{ type:'tap:ack', matchId:m.id, slot:p.slot, sequence:m.sequence }); return; } send(s,{ type:'error', code:'unknown_type' }); }); ws.on('close',()=>{ clearInterval(sync); clearTickets(s.id); sessions.delete(s.id); }); ws.on('error',()=>{}); });
-server.listen(CFG.port,()=>console.log(`Six Seven authoritative server: http://localhost:${CFG.port}`));
+const sessions = new Map();
+const tickets = new Map();
+const matches = new Map();
+
+function sendJson(res, code, body) {
+  const data = Buffer.from(JSON.stringify(body));
+  res.writeHead(code, { 'content-type': MIME['.json'], 'content-length': data.length });
+  res.end(data);
+}
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    let raw = '';
+    req.on('data', chunk => { raw += chunk; if (raw.length > 1_000_000) reject(new Error('too_large')); });
+    req.on('end', () => { try { resolve(raw ? JSON.parse(raw) : {}); } catch { reject(new Error('bad_json')); } });
+  });
+}
+async function api(req, res, url) {
+  try {
+    if (url.pathname === '/api/health') return sendJson(res, 200, { ok: true, serverNow: now(), config: { roundMs: CFG.roundMs, matchmakingMs: CFG.matchmakingMs } });
+    if (url.pathname === '/api/config') return sendJson(res, 200, { matchmakingMs: CFG.matchmakingMs, roundMs: CFG.roundMs, prizePoolStars: 10000 });
+    if (url.pathname === '/api/global-war') return sendJson(res, 200, store.war());
+    if (url.pathname === '/api/leaderboard/weekly') return sendJson(res, 200, { prizePoolStars: 10000, prizes: PRIZES, players: store.top(100) });
+    if (url.pathname === '/api/me') return sendJson(res, 200, { player: store.player({ playerId: url.searchParams.get('playerId'), name: url.searchParams.get('name'), side: url.searchParams.get('side') }) });
+    if (req.method === 'POST' && url.pathname === '/api/profile') return sendJson(res, 200, { player: store.player(await readBody(req)) });
+    if (req.method === 'POST' && url.pathname === '/api/shop/buy') { const body = await readBody(req); return sendJson(res, 200, { player: store.buy(body.playerId, body.kind, body.itemId) }); }
+    if (req.method === 'POST' && url.pathname === '/api/shop/equip') { const body = await readBody(req); return sendJson(res, 200, { player: store.equip(body.playerId, body.kind, body.itemId) }); }
+    return sendJson(res, 404, { error: 'not_found' });
+  } catch (error) {
+    return sendJson(res, 400, { error: error.message || 'bad_request' });
+  }
+}
+function staticFile(req, res, url) {
+  let target = decodeURIComponent(url.pathname);
+  if (target === '/' || target === '') target = '/index.html';
+  const file = path.normalize(path.join(ROOT, target));
+  if (!file.startsWith(ROOT)) return sendJson(res, 403, { error: 'forbidden' });
+  fs.readFile(file, (error, buffer) => {
+    if (error) {
+      return fs.readFile(path.join(ROOT, 'index.html'), (fallbackError, html) => {
+        if (fallbackError) return sendJson(res, 404, { error: 'not_found' });
+        res.writeHead(200, { 'content-type': MIME['.html'], 'cache-control': 'no-store' });
+        res.end(html);
+      });
+    }
+    res.writeHead(200, { 'content-type': MIME[path.extname(file).toLowerCase()] || 'application/octet-stream', 'cache-control': path.basename(file) === 'index.html' ? 'no-store' : 'public, max-age=86400' });
+    res.end(buffer);
+  });
+}
+
+const server = http.createServer((req, res) => {
+  const url = new URL(req.url, 'http://localhost');
+  if (url.pathname.startsWith('/api/')) return api(req, res, url);
+  return staticFile(req, res, url);
+});
+const wss = new WebSocketServer({ noServer: true });
+server.on('upgrade', (req, socket, head) => {
+  const url = new URL(req.url, 'http://localhost');
+  if (url.pathname !== '/ws') return socket.destroy();
+  wss.handleUpgrade(req, socket, head, ws => wss.emit('connection', ws, req));
+});
+
+function send(session, payload) {
+  if (!session || session.ws.readyState !== WebSocket.OPEN) return;
+  try { session.ws.send(JSON.stringify({ serverNow: now(), ...payload })); } catch {}
+}
+function removeTicket(ticketId, reason = 'cancelled') {
+  const ticket = tickets.get(ticketId);
+  if (!ticket) return;
+  clearTimeout(ticket.timeout);
+  tickets.delete(ticket.id);
+  const session = sessions.get(ticket.sessionId);
+  if (session?.ticketId === ticket.id) session.ticketId = '';
+  if (reason !== 'matched') send(session, { type: 'matchmaking:cancelled', reason });
+  if (ticket.pairId) {
+    const pair = tickets.get(ticket.pairId);
+    if (pair) {
+      clearTimeout(pair.timeout);
+      tickets.delete(pair.id);
+      const other = sessions.get(pair.sessionId);
+      if (other?.ticketId === pair.id) other.ticketId = '';
+      if (reason !== 'matched') send(other, { type: 'matchmaking:cancelled', reason: 'opponent_cancelled' });
+    }
+  }
+}
+function clearTickets(sessionId) { for (const ticket of [...tickets.values()]) if (ticket.sessionId === sessionId) removeTicket(ticket.id, 'disconnected'); }
+function participant(session, slot) {
+  const profile = session.profile;
+  return { slot, sessionId: session.id, playerId: cleanId(profile.playerId), name: cleanName(profile.name), side: side(profile.side), hand: cleanHand(profile.hand), digitStyle: cleanDigit(profile.digitStyle), bot: false, tapTimes: [] };
+}
+function botFor(sideValue, slot) {
+  return { slot, sessionId: '', playerId: '', name: pick(RIVALS), side: side(sideValue), hand: pick(HANDS), digitStyle: pick(DIGITS), bot: true, botPower: 0.85 + Math.random() * 0.38, tapTimes: [] };
+}
+function matchView(match, sessionId) {
+  return { id: match.id, startsAt: match.startsAt, endsAt: match.endsAt, durationMs: CFG.roundMs, scores: { ...match.scores }, youSlot: match.participants.find(part => part.sessionId === sessionId)?.slot || null, participants: match.participants.map(part => ({ slot: part.slot, name: part.name, side: part.side, hand: part.hand, digitStyle: part.digitStyle, bot: part.bot })), sequence: match.sequence };
+}
+function broadcast(match, payload) { for (const part of match.participants) if (part.sessionId) send(sessions.get(part.sessionId), payload); }
+function findOpponent(sideValue, ownSessionId) {
+  return [...tickets.values()].filter(ticket => ticket.side === opp(sideValue) && !ticket.pairId && ticket.sessionId !== ownSessionId && ticket.deadlineAt >= now()).sort((a, b) => a.enqueuedAt - b.enqueuedAt)[0] || null;
+}
+function sendQueued(ticket, deadlineAt, opponentFound = false) {
+  send(sessions.get(ticket.sessionId), { type: 'matchmaking:queued', ticketId: ticket.id, deadlineAt, matchmakingMs: Math.max(0, deadlineAt - ticket.enqueuedAt), opponentFound });
+}
+function takeTicket(ticketId) {
+  const ticket = tickets.get(ticketId);
+  if (!ticket) return null;
+  clearTimeout(ticket.timeout);
+  tickets.delete(ticket.id);
+  const session = sessions.get(ticket.sessionId);
+  if (session?.ticketId === ticket.id) session.ticketId = '';
+  return { ticket, session };
+}
+function resolveSingle(ticketId) {
+  const entry = takeTicket(ticketId);
+  if (!entry?.session || entry.session.activeMatchId) return;
+  createMatch([participant(entry.session, 'a'), botFor(opp(entry.session.profile.side), 'b')], true);
+}
+function resolvePair(aId, bId) {
+  const a = takeTicket(aId);
+  const b = takeTicket(bId);
+  const aReady = a?.session && !a.session.activeMatchId;
+  const bReady = b?.session && !b.session.activeMatchId;
+  if (aReady && bReady) return createMatch([participant(a.session, 'a'), participant(b.session, 'b')], false);
+  const remaining = aReady ? a.session : (bReady ? b.session : null);
+  if (remaining) createMatch([participant(remaining, 'a'), botFor(opp(remaining.profile.side), 'b')], true);
+}
+function queue(session, profile) {
+  clearTickets(session.id);
+  if (session.activeMatchId) return send(session, { type: 'error', code: 'active_match' });
+  session.profile = { playerId: cleanId(profile.playerId), name: cleanName(profile.name), side: side(profile.side), hand: cleanHand(profile.hand), digitStyle: cleanDigit(profile.digitStyle) };
+  store.player(session.profile);
+  const ticket = { id: uid('ticket'), sessionId: session.id, side: session.profile.side, enqueuedAt: now(), deadlineAt: now() + CFG.matchmakingMs, pairId: '', timeout: null };
+  const found = findOpponent(ticket.side, session.id);
+  if (found) {
+    clearTimeout(found.timeout);
+    found.pairId = ticket.id;
+    ticket.pairId = found.id;
+    tickets.set(ticket.id, ticket);
+    session.ticketId = ticket.id;
+    const deadlineAt = Math.max(found.deadlineAt, ticket.deadlineAt);
+    const timeout = setTimeout(() => resolvePair(found.id, ticket.id), Math.max(0, deadlineAt - now()));
+    found.timeout = timeout;
+    ticket.timeout = timeout;
+    sendQueued(found, deadlineAt, true);
+    sendQueued(ticket, deadlineAt, true);
+    return;
+  }
+  ticket.timeout = setTimeout(() => resolveSingle(ticket.id), CFG.matchmakingMs);
+  tickets.set(ticket.id, ticket);
+  session.ticketId = ticket.id;
+  sendQueued(ticket, ticket.deadlineAt, false);
+}
+function createMatch(parts, bot = false) {
+  const createdAt = now();
+  const match = { id: uid('match'), bot, status: 'countdown', createdAt, startsAt: createdAt + CFG.startDelayMs, endsAt: createdAt + CFG.startDelayMs + CFG.roundMs, participants: parts, scores: Object.fromEntries(parts.map(part => [part.slot, 0])), jackpots: Object.fromEntries(parts.map(part => [part.slot, false])), sequence: 0, interval: null, endTimer: null, botTimers: [] };
+  matches.set(match.id, match);
+  for (const part of parts) {
+    const session = sessions.get(part.sessionId);
+    if (session) { session.activeMatchId = match.id; session.ticketId = ''; send(session, { type: 'match:found', match: matchView(match, session.id) }); }
+  }
+  match.interval = setInterval(() => scoreTick(match), CFG.tickMs);
+  match.endTimer = setTimeout(() => finalize(match.id), Math.max(0, match.endsAt - now() + 35));
+  for (const part of parts.filter(item => item.bot)) scheduleBot(match, part.slot, Math.max(0, match.startsAt - now()));
+}
+function scoreTick(match) {
+  if (!match || match.status === 'complete') return;
+  if (now() >= match.startsAt && now() < match.endsAt) match.status = 'live';
+  broadcast(match, { type: 'match:score', matchId: match.id, scores: { ...match.scores }, sequence: match.sequence, startsAt: match.startsAt, endsAt: match.endsAt });
+}
+function applyTap(match, slot, bot = false) {
+  const ts = now();
+  if (!match || match.status === 'complete' || ts < match.startsAt || ts >= match.endsAt) return false;
+  const part = match.participants.find(item => item.slot === slot);
+  if (!part) return false;
+  if (!bot) {
+    part.tapTimes = (part.tapTimes || []).filter(tapTs => ts - tapTs < 1000);
+    if (part.tapTimes.length >= CFG.tapCapPerSec) return false;
+    part.tapTimes.push(ts);
+  }
+  match.status = 'live';
+  match.scores[slot] = Number(match.scores[slot] || 0) + 1;
+  match.sequence++;
+  if (match.scores[slot] === 67) match.jackpots[slot] = true;
+  return true;
+}
+function scheduleBot(match, slot, delay) {
+  const timer = setTimeout(() => {
+    if (!match || match.status === 'complete' || now() >= match.endsAt) return;
+    if (now() >= match.startsAt) applyTap(match, slot, true);
+    const part = match.participants.find(item => item.slot === slot);
+    const base = 70 + Math.random() * 95;
+    const rush = now() > match.endsAt - 1300 ? 0.78 : 1;
+    scheduleBot(match, slot, Math.max(48, base * rush / Number(part?.botPower || 1)));
+  }, delay);
+  match.botTimers.push(timer);
+}
+function finalize(matchId) {
+  const match = matches.get(matchId);
+  if (!match || match.status === 'complete') return;
+  match.status = 'complete';
+  clearInterval(match.interval);
+  clearTimeout(match.endTimer);
+  for (const timer of match.botTimers) clearTimeout(timer);
+  scoreTick(match);
+  const record = store.finalize(match);
+  for (const part of match.participants) {
+    const session = sessions.get(part.sessionId);
+    if (!session) continue;
+    session.activeMatchId = '';
+    send(session, { type: 'match:result', match: record, player: part.playerId ? store.player(part) : null });
+  }
+  setTimeout(() => matches.delete(match.id), 30000);
+}
+
+wss.on('connection', ws => {
+  const session = { id: uid('session'), ws, ticketId: '', activeMatchId: '', profile: null };
+  sessions.set(session.id, session);
+  send(session, { type: 'hello:required', sessionId: session.id, config: { roundMs: CFG.roundMs, matchmakingMs: CFG.matchmakingMs } });
+  const sync = setInterval(() => send(session, { type: 'server:sync' }), 2000);
+  ws.on('message', raw => {
+    let message;
+    try { message = JSON.parse(String(raw)); } catch { return send(session, { type: 'error', code: 'bad_json' }); }
+    if (message.type === 'hello') {
+      session.profile = { playerId: cleanId(message.playerId), name: cleanName(message.name), side: side(message.side), hand: cleanHand(message.hand), digitStyle: cleanDigit(message.digitStyle) };
+      return send(session, { type: 'hello:ack', sessionId: session.id, player: store.player(session.profile) });
+    }
+    if (message.type === 'matchmaking:join') return queue(session, message.profile || message);
+    if (message.type === 'matchmaking:cancel') return removeTicket(session.ticketId, 'cancelled');
+    if (message.type === 'tap') {
+      const match = matches.get(message.matchId || session.activeMatchId);
+      if (!match || match.id !== session.activeMatchId) return;
+      const part = match.participants.find(item => item.sessionId === session.id);
+      if (part && applyTap(match, part.slot, false)) send(session, { type: 'tap:ack', matchId: match.id, slot: part.slot, sequence: match.sequence });
+      return;
+    }
+    return send(session, { type: 'error', code: 'unknown_type' });
+  });
+  ws.on('close', () => { clearInterval(sync); clearTickets(session.id); sessions.delete(session.id); });
+  ws.on('error', () => {});
+});
+
+server.listen(CFG.port, () => console.log(`Six Seven authoritative server: http://localhost:${CFG.port}`));
