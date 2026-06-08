@@ -173,6 +173,8 @@ export function bootGame() {
   };
 
   let TOP = [];
+  let topRequestId = 0;
+  let topLoading = false;
   let TOP_TAB = 'players';
   let GLOBAL_WAR = { six: 521000, seven: 478000 };
   let SHOP_TAB = 'hands';
@@ -978,16 +980,6 @@ export function bootGame() {
     haptic.success();
   }
 
-  function seededFakeTop() {
-    const names = ['ZenBoy', 'Cooked67', 'NoChill', 'AlphaGen', 'SevenLord', 'SixBoss', 'AuraDebt', 'BloxKid', 'mishakek', 'pluh', 'GYAT', 'KleoX', 'Spectre'];
-    return Array.from({ length: 100 }, (_, index) => ({
-      rank: index + 1,
-      name: names[index % names.length] + (index > 12 ? index : ''),
-      side: index % 2 ? 7 : 6,
-      score: 12670 - index * 67,
-    }));
-  }
-
   function seededGuildTop() {
     const names = ['Six Mafia', 'Seven Cult', 'Aura Lab', 'Tap Syndicate', 'Mango Mode', 'No Chill Crew'];
     return Array.from({ length: 67 }, (_, index) => ({
@@ -998,15 +990,63 @@ export function bootGame() {
     }));
   }
 
+  function requestTop() {
+    NET.send({ type: 'get_top' });
+    fetchTopFromApi();
+  }
+
+  async function fetchTopFromApi() {
+    const requestId = topRequestId + 1;
+    topRequestId = requestId;
+    topLoading = true;
+
+    try {
+      const response = await fetch(NET.resolveHttpUrl('/api/top'), { cache: 'no-store' });
+      if (!response.ok) {
+        if (requestId === topRequestId) {
+          topLoading = false;
+          if (!query('[data-screen="top"]')?.hidden) renderTop({ request: false });
+        }
+        return;
+      }
+      const payload = await response.json();
+      if (requestId !== topRequestId) return;
+      TOP = Array.isArray(payload.top) ? payload.top : [];
+      GLOBAL_WAR = payload.globalWar || GLOBAL_WAR;
+      topLoading = false;
+      if (!query('[data-screen="top"]')?.hidden) renderTop({ request: false });
+      renderGlobalWar();
+    } catch {
+      if (requestId === topRequestId) {
+        topLoading = false;
+        if (!query('[data-screen="top"]')?.hidden) renderTop({ request: false });
+      }
+    }
+  }
+
   function renderTop(options = {}) {
-    if (options.request !== false && TOP_TAB === 'players') NET.send({ type: 'get_top' });
+    if (options.request !== false && TOP_TAB === 'players') requestTop();
     byId('top-player-prize')?.toggleAttribute('hidden', TOP_TAB !== 'players');
     byId('top-guild-prize')?.toggleAttribute('hidden', TOP_TAB !== 'guilds');
 
     const list = byId('top-list');
     if (!list) return;
     list.innerHTML = '';
-    const board = TOP_TAB === 'guilds' ? seededGuildTop() : (TOP.length ? TOP : seededFakeTop());
+    const board = TOP_TAB === 'guilds' ? seededGuildTop() : TOP;
+    if (!board.length) {
+      const row = document.createElement('div');
+      row.className = 'top-row';
+      row.innerHTML = `
+        <div class="top-row__rank">--</div>
+        <div class="top-row__name">${topLoading ? 'LOADING TOP...' : 'NO REAL PLAYERS YET'}</div>
+        <div class="top-row__right">
+          <span class="top-row__score">0</span>
+        </div>
+      `;
+      list.appendChild(row);
+      setText('reset-in', weeklyResetText());
+      return;
+    }
     board.slice(0, 100).forEach((player, index) => {
       const place = player.rank || index + 1;
       const row = document.createElement('div');
@@ -1219,6 +1259,7 @@ export function bootGame() {
       Object.assign(CONFIG, message.config || {});
       syncFromServerPlayer(message.player);
       TOP = message.top || TOP;
+      if (message.top) topLoading = false;
       GLOBAL_WAR = message.globalWar || GLOBAL_WAR;
       renderGlobalWar();
     });
@@ -1262,6 +1303,7 @@ export function bootGame() {
     NET.on('match_result', renderResult);
     NET.on('top_state', message => {
       TOP = message.top || [];
+      topLoading = false;
       GLOBAL_WAR = message.globalWar || GLOBAL_WAR;
       if (!query('[data-screen="top"]')?.hidden) renderTop({ request: false });
       renderGlobalWar();

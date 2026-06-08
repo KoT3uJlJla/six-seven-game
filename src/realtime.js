@@ -14,7 +14,7 @@ function wsUrlFromHttpBase(base) {
 }
 
 export class RealtimeClient {
-  constructor({ buildHello, onStatus, shouldSendQueued }) {
+  constructor({ buildHello, onStatus = () => {}, shouldSendQueued } = {}) {
     this.ws = null;
     this.connected = false;
     this.reconnectTimer = 0;
@@ -23,7 +23,7 @@ export class RealtimeClient {
     this.handlers = new Map();
     this.outbox = [];
     this.buildHello = buildHello;
-    this.onStatus = onStatus;
+    this.onStatus = typeof onStatus === 'function' ? onStatus : () => {};
     this.shouldSendQueued = shouldSendQueued;
   }
 
@@ -51,6 +51,15 @@ export class RealtimeClient {
     const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
     if (location.port && location.port !== '3000') return `${protocol}//${location.hostname}:3000/ws`;
     return `${protocol}//${location.host}/ws`;
+  }
+
+  resolveHttpUrl(pathname = '/') {
+    const url = new URL(this.resolveUrl());
+    url.protocol = url.protocol === 'wss:' ? 'https:' : 'http:';
+    url.pathname = pathname;
+    url.search = '';
+    url.hash = '';
+    return url.toString();
   }
 
   connect() {
