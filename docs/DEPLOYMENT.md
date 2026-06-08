@@ -42,6 +42,16 @@ Health check:
 GET /api/health
 ```
 
+If the existing Render service is already configured with `Root Directory: backend`, keep that setting. The `backend/` directory is a thin compatibility shim:
+
+```text
+Root Directory: backend
+Build command: npm install
+Start command: npm start
+```
+
+It starts the canonical root server from `../server.js`.
+
 Realtime endpoint:
 
 ```text

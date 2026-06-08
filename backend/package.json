@@ -1,0 +1,13 @@
+{
+  "name": "sixseven-backend",
+  "private": true,
+  "version": "0.3.1",
+  "type": "module",
+  "scripts": {
+    "start": "node start.js",
+    "check": "node --check start.js && node --check ../server.js && node --check ../server/config.js && node --check ../server/database.js && node --check ../server/game-server.js && node --check ../server/realtime.js && node --check ../server/static.js"
+  },
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  }
+}

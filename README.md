@@ -88,3 +88,5 @@ NODE_VERSION=22
 PORT=3000
 SIX_SEVEN_DB=data/six-seven-db.json
 ```
+
+Existing Render services configured with `Root Directory: backend` are supported by the lightweight `backend/` shim. It installs no duplicate backend code and starts the canonical root server.
