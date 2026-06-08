@@ -20,7 +20,7 @@ import {
   randomBetween,
   sideOf,
 } from './config.js';
-import { animateElement, byId, escapeHtml, query, queryAll, restartClass, setImage, setServerStatus, setText, showToast } from './dom.js';
+import { animateElement, byId, escapeHtml, query, queryAll, restartClass, setImage, setText, showToast } from './dom.js';
 import { applyTranslations, detectClientLang, text } from './i18n.js';
 import { RealtimeClient } from './realtime.js';
 import { haptic, initTelegram, telegramName, telegramStartParam, telegramUserId, tg } from './telegram.js';
@@ -136,14 +136,6 @@ export function bootGame() {
       hand: state.hand,
       digit: state.digitStyle,
     }),
-    onStatus: status => {
-      const labels = {
-        connecting: tr('serverConnecting'),
-        offline: tr('serverOffline'),
-        online: tr('serverOnline'),
-      };
-      setServerStatus(status, labels[status] || status);
-    },
     shouldSendQueued: payload => {
       if (payload.type !== 'queue' && payload.type !== 'cancel_queue') return true;
       return MATCHING.active && !MATCHING.cancelled;
@@ -522,7 +514,6 @@ export function bootGame() {
     if (digit) digit.dataset.side = String(state.side);
 
     const stage = byId('battle-stage');
-    query('.battle__sync')?.remove();
     if (stage) {
       stage.classList.remove('is-final-rush');
       stage.classList.add('is-playing');

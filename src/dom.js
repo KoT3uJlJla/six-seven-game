@@ -69,6 +69,3 @@ export function showToast(message) {
   toastTimer = window.setTimeout(() => el.classList.remove('is-show'), 1600);
 }
 
-export function setServerStatus(status, label) {
-  query('.server-pill')?.remove();
-}
