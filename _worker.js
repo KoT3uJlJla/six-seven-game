@@ -8,37 +8,17 @@ export default {
     const apiBase = env.SIX_SEVEN_API_BASE || 'https://six-seven-api.onrender.com';
     let html = await asset.text();
 
-    if (!html.includes('api-client.js')) {
-      const injection = `<script>window.SIX_SEVEN_API_BASE=${JSON.stringify(apiBase)};</script>\n  <script src="api-client.js"></script>`;
+    if (!html.includes('window.SIX_SEVEN_API_BASE=')) {
+      const injection = `<script>window.SIX_SEVEN_API_BASE=${JSON.stringify(apiBase)};</script>`;
       html = html.replace('<script src="app.js"></script>', `${injection}\n  <script src="app.js"></script>`);
     } else {
       html = html.replace(/<script>window\.SIX_SEVEN_API_BASE=.*?<\/script>/, `<script>window.SIX_SEVEN_API_BASE=${JSON.stringify(apiBase)};</script>`);
     }
 
-    // Production stack: one CSS performance layer + guard + consolidated runtime + release hotfixes.
-    if (!html.includes('battle-clean.css')) {
-      html = html.replace('</head>', '  <link rel="stylesheet" href="battle-clean.css" />\n</head>');
-    }
-    if (!html.includes('desktop-guard-hard.js')) {
-      html = html.replace('</body>', '  <script src="desktop-guard-hard.js"></script>\n</body>');
-    }
-    if (!html.includes('p1-runtime.js')) {
-      html = html.replace('</body>', '  <script src="p1-runtime.js"></script>\n</body>');
-    }
-    if (!html.includes('release-hotfix-visuals-shop.js')) {
-      html = html.replace('</body>', '  <script src="release-hotfix-visuals-shop.js"></script>\n</body>');
-    }
-    if (!html.includes('release-referral-mask.js')) {
-      html = html.replace('</body>', '  <script src="release-referral-mask.js"></script>\n</body>');
-    }
-    if (!html.includes('release-story-share.js')) {
-      html = html.replace('</body>', '  <script src="release-story-share.js"></script>\n</body>');
-    }
+    // The current app.js owns matchmaking, battle input, and realtime sync.
+    // Keep old post-load runtimes out of the page; they target the pre-WS build.
     if (!html.includes('release-image-rescue.js')) {
       html = html.replace('</body>', '  <script src="release-image-rescue.js"></script>\n</body>');
-    }
-    if (!html.includes('release-live-canonical.js')) {
-      html = html.replace('</body>', '  <script src="release-live-canonical.js"></script>\n</body>');
     }
 
     return new Response(html, {

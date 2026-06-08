@@ -22,6 +22,7 @@
     scoreFxEveryNthTap: 2,
     reconnectBaseMs: 900,
     reconnectMaxMs: 4200,
+    matchFallbackGraceMs: 650,
   };
 
   const haptic = {
@@ -275,18 +276,34 @@
     resolveUrl() {
       const explicit = String(window.SIX_SEVEN_WS_URL || localStorage.getItem('six-seven::ws-url') || '').trim();
       if (explicit) return explicit;
+
       const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
       const localHost = /^(localhost|127\.0\.0\.1|0\.0\.0\.0)$/i.test(location.hostname);
       if (localHost && location.port && location.port !== '3000') {
         return `${protocol}//${location.hostname}:3000/ws`;
       }
+
+      const configuredApiBase = String(window.SIX_SEVEN_API_BASE || '').trim();
+      const productionApiBase = configuredApiBase || (!localHost && location.hostname !== 'six-seven-api.onrender.com' ? 'https://six-seven-api.onrender.com' : '');
+      if (productionApiBase) {
+        try {
+          const url = new URL(productionApiBase, location.href);
+          url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+          url.pathname = '/ws';
+          url.search = '';
+          url.hash = '';
+          return url.toString();
+        } catch {}
+      }
+
       return `${protocol}//${location.host}/ws`;
     }
 
     connect() {
       if (this.ws && [WebSocket.CONNECTING, WebSocket.OPEN].includes(this.ws.readyState)) return;
       clearTimeout(this.reconnectTimer);
-      setServerStatus('connecting', 'SERVER CONNECTING…');
+      this.reconnectTimer = 0;
+      setServerStatus('connecting', 'SERVER CONNECTING...');
       try {
         this.ws = new WebSocket(this.resolveUrl());
       } catch {
@@ -381,13 +398,15 @@
     raf: 0,
     resultReceived: false,
     jackpotSlots: new Set(),
+    localBot: false,
+    localBotTimer: 0,
   };
 
   let TOP = [];
   let GLOBAL_WAR = { six: 521000, seven: 478000 };
   let matchingTimer = 0;
   let matchingRaf = 0;
-  const MATCHING = { active: false, cancelled: false, serverSearch: false, opponentFound: false, searchEndsAt: 0, lastText: '' };
+  const MATCHING = { active: false, cancelled: false, serverSearch: false, opponentFound: false, searchEndsAt: 0, lastText: '', fallbackArmed: false };
   let SHOP_TAB = 'hands';
   let heroOtherHandId = 'clown';
 
@@ -550,18 +569,20 @@
 
   function startMatchmaking() {
     clearMatchingTimers();
+    clearLocalBotTimer();
+    NET.dropQueued(['queue', 'cancel_queue']);
     MATCHING.active = true;
     MATCHING.cancelled = false;
     MATCHING.serverSearch = false;
     MATCHING.opponentFound = false;
     MATCHING.searchEndsAt = Date.now() + CONFIG.matchmakingMs;
     MATCHING.lastText = '';
+    MATCHING.fallbackArmed = false;
     show('matching');
     setImg('matching-side', getDigitUrl(state.digitStyle, state.side));
     const sideEl = $('matching-side');
     if (sideEl) sideEl.dataset.side = state.side;
     renderMatchingCountdown(MATCHING.searchEndsAt, false, { server: false });
-    NET.dropQueued(['queue', 'cancel_queue']);
     NET.connect();
     NET.send({ type: 'queue', side: state.side, name: state.name, hand: state.hand, digit: state.digitStyle }, { queueIfClosed: true });
     haptic.medium();
@@ -585,20 +606,50 @@
       const clockNow = MATCHING.serverSearch ? NET.serverNow() : Date.now();
       const remain = Math.max(0, MATCHING.searchEndsAt - clockNow);
       const seconds = (remain / 1000).toFixed(1);
-      const prefix = MATCHING.opponentFound ? t('found') : (NET.connected || !MATCHING.serverSearch ? t('scan') : t('serverOffline'));
-      const nextText = `${prefix} ${seconds}`;
+      const nextText = MATCHING.opponentFound ? t('found') : `${seconds}s`;
       if (status && MATCHING.lastText !== nextText) {
         status.textContent = nextText;
         MATCHING.lastText = nextText;
       }
-      if (remain > 0) matchingTimer = setTimeout(tick, 100);
+      if (remain > 0) {
+        matchingTimer = setTimeout(tick, 100);
+      } else if (!MATCHING.opponentFound && !MATCHING.fallbackArmed) {
+        MATCHING.fallbackArmed = true;
+        if (status) status.textContent = t('bot');
+        const grace = NET.connected ? CONFIG.matchFallbackGraceMs : 0;
+        matchingTimer = setTimeout(startBotFallback, grace);
+      }
     };
     tick();
   }
 
-  function cancelMatchmaking() {
-    MATCHING.cancelled = true;
+  function startBotFallback() {
+    if (!MATCHING.active || MATCHING.cancelled || BATTLE.running) return;
     MATCHING.active = false;
+    clearMatchingTimers();
+    NET.dropQueued(['queue', 'cancel_queue']);
+    NET.send({ type: 'cancel_queue' }, { queueIfClosed: false });
+    const nowTs = Date.now();
+    const startsAt = nowTs + CONFIG.startDelayMs;
+    const botSide = opposite(state.side);
+    beginBattle({
+      matchId: `local_bot_${nowTs.toString(36)}`,
+      yourSlot: 'p1',
+      startsAt,
+      endsAt: startsAt + CONFIG.roundMs,
+      bot: true,
+      localBot: true,
+      scores: { p1: 0, p2: 0 },
+      participants: [
+        { slot: 'p1', playerId: PLAYER_ID, name: state.name, side: state.side, hand: state.hand, digit: state.digitStyle },
+        { slot: 'p2', playerId: '', name: pick(['ZenBot', 'SixSevenBot', 'AuraBot', 'TapBot']), side: botSide, hand: pick(HAND_CATALOG).id, digit: pick(DIGIT_CATALOG).id, bot: true },
+      ],
+    });
+  }
+
+  function cancelMatchmaking() {
+    MATCHING.active = false;
+    MATCHING.cancelled = true;
     clearMatchingTimers();
     NET.dropQueued(['queue', 'cancel_queue']);
     NET.send({ type: 'cancel_queue' }, { queueIfClosed: false });
@@ -607,9 +658,13 @@
   }
 
   function beginBattle(payload) {
+    if (!payload || !payload.matchId) return;
     if (MATCHING.cancelled) return;
-    MATCHING.active = false;
+    if (!payload.localBot && !MATCHING.active && !BATTLE.running) return;
+    if (BATTLE.running && BATTLE.matchId && payload.matchId !== BATTLE.matchId) return;
     clearMatchingTimers();
+    clearLocalBotTimer();
+    MATCHING.active = false;
     Object.assign(BATTLE, {
       matchId: payload.matchId,
       yourSlot: payload.yourSlot,
@@ -624,6 +679,7 @@
       resultReceived: false,
       lastTimerText: '',
       jackpotSlots: new Set(),
+      localBot: Boolean(payload.localBot),
     });
     BATTLE.enemySlot = BATTLE.participants.find(p => p.slot !== BATTLE.mySlot)?.slot || 'p2';
 
@@ -657,6 +713,7 @@
     show('battle');
     updateScoreUI();
     startBattleRaf();
+    if (BATTLE.localBot) scheduleLocalBotTap();
   }
 
   function setBattleHands(me, enemy) {
@@ -696,7 +753,7 @@
     if (timerFg) timerFg.setAttribute('stroke-dasharray', circ.toFixed(2));
     const tick = () => {
       if (!BATTLE.running) return;
-      const serverTime = NET.serverNow();
+      const serverTime = battleNow();
       if (serverTime < BATTLE.startsAt) {
         const pre = Math.max(0, BATTLE.startsAt - serverTime);
         const label = pre > 760 ? 'SIX!' : pre > 380 ? 'SEVEN!' : t('go');
@@ -728,6 +785,11 @@
         if (remain <= 0 && !BATTLE.resultReceived) {
           BATTLE.acceptingTaps = false;
           $('tap-zone')?.classList.remove('is-live');
+          clearLocalBotTimer();
+          if (BATTLE.localBot) {
+            renderLocalBotResult();
+            return;
+          }
           setBattleMeme('SERVER FINALIZING…');
         }
       }
@@ -748,12 +810,101 @@
     if (sevenBar) sevenBar.style.width = `${100 - pSix}%`;
   }
 
+  function battleNow() {
+    return BATTLE.localBot ? Date.now() : NET.serverNow();
+  }
+
+  function clearLocalBotTimer() {
+    clearTimeout(BATTLE.localBotTimer);
+    BATTLE.localBotTimer = 0;
+  }
+
+  function incrementLocalScore(slot, amount = 1) {
+    const prev = Number(BATTLE.scores[slot] || 0);
+    const next = prev + amount;
+    BATTLE.scores[slot] = next;
+    updateScoreUI();
+    if (prev < 67 && next >= 67) showJackpot(slot);
+  }
+
+  function scheduleLocalBotTap() {
+    clearLocalBotTimer();
+    if (!BATTLE.localBot || !BATTLE.running || BATTLE.resultReceived) return;
+    const clockNow = battleNow();
+    const remaining = Math.max(0, BATTLE.endsAt - clockNow);
+    if (remaining <= 0) return;
+    const waitForStart = Math.max(0, BATTLE.startsAt - clockNow);
+    const finalRush = remaining < 1800;
+    const baseDelay = rnd(105, 220);
+    const delay = Math.max(58, baseDelay * (finalRush ? 0.78 : 1));
+    BATTLE.localBotTimer = setTimeout(() => {
+      const liveNow = battleNow();
+      if (!BATTLE.localBot || !BATTLE.running || BATTLE.resultReceived) return;
+      if (liveNow < BATTLE.startsAt || liveNow >= BATTLE.endsAt) {
+        scheduleLocalBotTap();
+        return;
+      }
+      const burst = Math.random() < (finalRush ? 0.18 : 0.08) ? 2 : 1;
+      incrementLocalScore(BATTLE.enemySlot, burst);
+      const enemySide = sideOf(BATTLE.participants.find(p => p.slot === BATTLE.enemySlot)?.side || opposite(state.side));
+      animateHandForSide(enemySide);
+      if (!lowPower || Number(BATTLE.scores[BATTLE.enemySlot] || 0) % 3 === 0) {
+        spawnFloater(enemySide, enemySide === 6 ? 'SIX!' : 'SEVEN!');
+      }
+      scheduleLocalBotTap();
+    }, waitForStart + delay);
+  }
+
+  function applyLocalBotOutcome(myScore, enemyScore, winnerSlot) {
+    const tie = !winnerSlot;
+    const myWin = winnerSlot === BATTLE.mySlot;
+    const reward = myWin ? Math.floor(50 + myScore * 0.8) : (tie ? 20 : 10);
+    state.coins = Number(state.coins || 0) + reward;
+    state.weeklyScore = Number(state.weeklyScore || 0) + myScore;
+    state.stats.best = Math.max(Number(state.stats.best || 0), myScore);
+    state.stats.totalTaps = Number(state.stats.totalTaps || 0) + myScore;
+    if (tie) {
+      state.stats.ties = Number(state.stats.ties || 0) + 1;
+      state.stats.currentStreak = 0;
+      state.stats.streakType = 'none';
+    } else if (myWin) {
+      state.stats.wins = Number(state.stats.wins || 0) + 1;
+      state.stats.currentStreak = state.stats.streakType === 'win' ? Number(state.stats.currentStreak || 0) + 1 : 1;
+      state.stats.streakType = 'win';
+    } else {
+      state.stats.losses = Number(state.stats.losses || 0) + 1;
+      state.stats.currentStreak = state.stats.streakType === 'lose' ? Number(state.stats.currentStreak || 0) + 1 : 1;
+      state.stats.streakType = 'lose';
+    }
+    saveState();
+    renderAllStatic();
+  }
+
+  function renderLocalBotResult() {
+    if (BATTLE.resultReceived) return;
+    const myScore = Number(BATTLE.scores[BATTLE.mySlot] || 0);
+    const enemyScore = Number(BATTLE.scores[BATTLE.enemySlot] || 0);
+    const winnerSlot = myScore === enemyScore ? null : (myScore > enemyScore ? BATTLE.mySlot : BATTLE.enemySlot);
+    applyLocalBotOutcome(myScore, enemyScore, winnerSlot);
+    renderResult({
+      matchId: BATTLE.matchId,
+      scores: { ...BATTLE.scores },
+      winnerSlot,
+      participants: BATTLE.participants,
+      localBot: true,
+    });
+  }
+
   function onBattleTap(event) {
     if (!BATTLE.running || !BATTLE.acceptingTaps) return;
-    const serverTime = NET.serverNow();
+    const serverTime = battleNow();
     if (serverTime < BATTLE.startsAt || serverTime >= BATTLE.endsAt) return;
     BATTLE.tapSeq += 1;
-    NET.send({ type: 'tap', matchId: BATTLE.matchId, seq: BATTLE.tapSeq, clientTs: Date.now() });
+    if (BATTLE.localBot) {
+      incrementLocalScore(BATTLE.mySlot, 1);
+    } else {
+      NET.send({ type: 'tap', matchId: BATTLE.matchId, seq: BATTLE.tapSeq, clientTs: Date.now() });
+    }
     haptic.light();
     animateHandForSide(state.side);
     animateCentralDigit();
@@ -863,6 +1014,7 @@
     BATTLE.running = false;
     BATTLE.acceptingTaps = false;
     cancelAnimationFrame(BATTLE.raf);
+    clearLocalBotTimer();
     $('tap-zone')?.classList.remove('is-live', 'is-armed');
     $('battle-stage')?.classList.remove('is-playing', 'is-final-rush');
 
@@ -878,7 +1030,7 @@
       verdict.textContent = tie ? t('draw') : myWin ? t('victory') : t('defeat');
       verdict.classList.add(tie ? 'is-tie' : myWin ? 'is-win' : 'is-lose');
     }
-    setText('result-subtitle', myScore === 67 ? t('jackpot') : `${state.side} GANG · ${t('serverTruth')}`);
+    setText('result-subtitle', myScore === 67 ? t('jackpot') : `${state.side} GANG · ${payload.localBot ? 'BOT MATCH' : t('serverTruth')}`);
     setImg('result-side', getDigitUrl(state.digitStyle, myWin || tie ? state.side : opposite(state.side)));
     const sideEl = $('result-side');
     if (sideEl) sideEl.dataset.side = myWin || tie ? state.side : opposite(state.side);
@@ -886,7 +1038,7 @@
     setText('result-enemy-score', enemyScore);
     setText('result-reward', reward);
     setText('result-callout-title', myScore === 67 ? 'SIX SEVEN PROPHECY' : myWin ? `GANG ${state.side} COOKED` : tie ? 'MID-OFF DETECTED' : 'MINUS AURA');
-    setText('result-callout-text', `Final score was committed by backend and saved to DB. Match: ${payload.matchId.slice(-8)}`);
+    setText('result-callout-text', payload.localBot ? `Bot match finished locally. Match: ${payload.matchId.slice(-8)}` : `Final score was committed by backend and saved to DB. Match: ${payload.matchId.slice(-8)}`);
     if (payload.player) syncFromServerPlayer(payload.player);
     if (payload.top) TOP = payload.top;
     if (payload.globalWar) GLOBAL_WAR = payload.globalWar;

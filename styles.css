@@ -450,6 +450,9 @@ body.is-immersive .screen {
 .matching__ring {
   position: relative; width: 200px; height: 200px;
   display: grid; place-items: center;
+  overflow: visible !important;
+  contain: none !important;
+  clip-path: none !important;
 }
 .ring {
   position: absolute; inset: 0;
@@ -469,6 +472,11 @@ body.is-immersive .screen {
   width: auto;
   z-index: 2;
   display: block;
+  border-radius: 0 !important;
+  object-fit: contain;
+  clip-path: none !important;
+  -webkit-mask-image: none !important;
+  mask-image: none !important;
 }
 .matching__status {
   font-family: var(--font-display);
