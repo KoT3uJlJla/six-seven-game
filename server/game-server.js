@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { GAME_CONFIG, RIVAL_NAMES, HAND_IDS, DIGIT_IDS } from './config.js';
+import { authenticateTelegram, makeDevIdentity } from './security.js';
 
 function id(prefix) {
   return `${prefix}_${crypto.randomBytes(8).toString('hex')}`;
@@ -13,10 +14,20 @@ function pick(list) { return list[Math.floor(Math.random() * list.length)] || li
 function safeSkin(value, list, fallback) { return list.includes(String(value || '')) ? String(value) : fallback; }
 function safeName(name) { return String(name || 'Alpha67').replace(/[<>]/g, '').trim().slice(0, 24) || 'Alpha67'; }
 
+function header(req, name) {
+  const value = req.headers[String(name).toLowerCase()];
+  return Array.isArray(value) ? value[0] : String(value || '');
+}
+
+function authError() {
+  return Object.assign(new Error('unauthorized'), { statusCode: 401, code: 'unauthorized' });
+}
+
 function serializeParticipant(participant) {
   return {
     slot: participant.slot,
-    playerId: participant.bot ? '' : participant.playerId,
+    id: participant.bot ? '' : participant.publicId,
+    publicId: participant.bot ? '' : participant.publicId,
     name: participant.name,
     side: participant.side,
     hand: participant.hand,
@@ -41,6 +52,8 @@ export class GameServer {
       peer,
       req,
       playerId: '',
+      publicId: '',
+      referralCode: '',
       name: 'Alpha67',
       side: 6,
       hand: 'hand',
@@ -67,6 +80,73 @@ export class GameServer {
     };
   }
 
+  resolveMessageIdentity(connection, message = {}) {
+    const initData = String(message.initData || '').trim();
+    if (initData) {
+      try {
+        return authenticateTelegram(initData, this.config);
+      } catch (error) {
+        if (!this.config.allowDevAuth) throw error;
+      }
+    }
+    if (!this.config.allowDevAuth) throw authError();
+    return makeDevIdentity(message.devPlayerId || message.playerId || connection.id, this.config);
+  }
+
+  resolveRequestIdentity(req) {
+    const auth = header(req, 'authorization');
+    let initData = header(req, 'x-telegram-init-data');
+    if (!initData && /^tma\s+/i.test(auth)) initData = auth.replace(/^tma\s+/i, '');
+    if (!initData && /^bearer\s+/i.test(auth)) initData = auth.replace(/^bearer\s+/i, '');
+    if (initData) {
+      try {
+        return authenticateTelegram(initData, this.config);
+      } catch (error) {
+        if (!this.config.allowDevAuth) throw error;
+      }
+    }
+    if (!this.config.allowDevAuth) throw authError();
+    return makeDevIdentity(header(req, 'x-six-seven-dev-player') || req.socket.remoteAddress || 'local-dev-player', this.config);
+  }
+
+  updatePlayerFromIdentity(identity, profile = {}) {
+    return this.db.updatePlayerProfile(identity.playerId, {
+      publicId: identity.publicId,
+      referralCode: identity.referralCode,
+      name: profile.name || identity.name,
+      side: profile.side,
+      hand: profile.hand,
+      digit: profile.digit,
+    });
+  }
+
+  getMe(req) {
+    const identity = this.resolveRequestIdentity(req);
+    const player = this.updatePlayerFromIdentity(identity, { name: identity.name });
+    return this.db.serializePlayer(player);
+  }
+
+  buyShopItem(req, body = {}) {
+    const identity = this.resolveRequestIdentity(req);
+    this.updatePlayerFromIdentity(identity, { name: identity.name });
+    const player = this.db.buyItem(identity.playerId, body.kind, body.itemId);
+    return this.db.serializePlayer(player);
+  }
+
+  equipShopItem(req, body = {}) {
+    const identity = this.resolveRequestIdentity(req);
+    this.updatePlayerFromIdentity(identity, { name: identity.name });
+    const player = this.db.equipItem(identity.playerId, body.kind, body.itemId);
+    return this.db.serializePlayer(player);
+  }
+
+  claimReferral(req, body = {}) {
+    const identity = this.resolveRequestIdentity(req);
+    this.updatePlayerFromIdentity(identity, { name: identity.name });
+    const result = this.db.claimReferral(identity.playerId, body.code, body.side);
+    return { ...result, player: this.db.serializePlayer(result.player) };
+  }
+
   handleMessage(connection, message = {}) {
     connection.lastSeenAt = now();
     switch (message.type) {
@@ -82,32 +162,54 @@ export class GameServer {
   }
 
   handleHello(connection, message) {
-    const fallbackId = `guest_${crypto.createHash('sha1').update(connection.id).digest('hex').slice(0, 12)}`;
-    connection.playerId = String(message.playerId || fallbackId).replace(/[^A-Za-z0-9_:-]/g, '').slice(0, 64) || fallbackId;
-    connection.name = safeName(message.name);
+    let identity;
+    try {
+      identity = this.resolveMessageIdentity(connection, message);
+    } catch {
+      connection.peer.sendJson({ type: 'auth_error', code: 'AUTH_REQUIRED', message: 'Telegram authorization required', serverTs: now() });
+      connection.peer.close(1008, 'auth required');
+      return false;
+    }
+
+    connection.playerId = identity.playerId;
+    connection.publicId = identity.publicId;
+    connection.referralCode = identity.referralCode;
+    connection.name = safeName(message.name || identity.name);
     connection.side = safeSide(message.side);
     connection.hand = safeSkin(message.hand, HAND_IDS, 'hand');
     connection.digit = safeSkin(message.digit, DIGIT_IDS, 'classic');
-    const player = this.db.updatePlayerProfile(connection.playerId, { name: connection.name, side: connection.side });
+
+    const player = this.updatePlayerFromIdentity(identity, {
+      name: connection.name,
+      side: connection.side,
+      hand: connection.hand,
+      digit: connection.digit,
+    });
     connection.peer.sendJson({
       type: 'player_state',
       connectionId: connection.id,
-      player,
+      player: this.db.serializePlayer(player),
       top: this.db.getTopPlayers(100),
       globalWar: this.db.getGlobalWar(),
       serverTs: now(),
       config: this.publicConfig(),
     });
+    return true;
   }
 
   enterQueue(connection, message) {
-    if (!connection.playerId) this.handleHello(connection, message);
+    if (!connection.playerId && !this.handleHello(connection, message)) return;
     this.cancelQueue(connection, 'replace_ticket', { silent: true });
     connection.side = safeSide(message.side ?? connection.side);
     connection.name = safeName(message.name ?? connection.name);
     connection.hand = safeSkin(message.hand ?? connection.hand, HAND_IDS, 'hand');
     connection.digit = safeSkin(message.digit ?? connection.digit, DIGIT_IDS, 'classic');
-    this.db.updatePlayerProfile(connection.playerId, { name: connection.name, side: connection.side });
+    this.db.updatePlayerProfile(connection.playerId, {
+      name: connection.name,
+      side: connection.side,
+      hand: connection.hand,
+      digit: connection.digit,
+    });
 
     const ticket = {
       id: id('queue'),
@@ -209,6 +311,7 @@ export class GameServer {
       slot,
       connId: connection.id,
       playerId: connection.playerId,
+      publicId: connection.publicId,
       name: connection.name,
       side: safeSide(connection.side),
       hand: safeSkin(connection.hand, HAND_IDS, 'hand'),
@@ -224,6 +327,7 @@ export class GameServer {
       slot,
       connId: '',
       playerId: '',
+      publicId: '',
       name: pick(RIVAL_NAMES),
       side: safeSide(side),
       hand: pick(HAND_IDS),

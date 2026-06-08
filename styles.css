@@ -5093,6 +5093,7 @@ body.is-immersive .bg-particle { opacity: 0.8; }
    Battle performance mode (FPS saver)
    ===================================================== */
 body.battle-lean .screen--battle .battle__stage {
+  background-color: #080a18;
   background:
     radial-gradient(54% 38% at 20% 74%, rgba(44,125,245,0.42), transparent 72%),
     radial-gradient(54% 38% at 80% 74%, rgba(255,42,109,0.38), transparent 72%),
@@ -5103,6 +5104,7 @@ body.battle-lean .screen--battle .battle__stage {
     0 22px 44px rgba(5,6,18,0.38),
     inset 0 0 0 1px rgba(255,255,255,0.06),
     0 0 36px rgba(143,59,255,0.16);
+  contain: layout paint;
   overflow: hidden;
 }
 
@@ -5117,6 +5119,8 @@ body.battle-lean .screen--battle .battle__stage::after {
 body.battle-lean .screen--battle .battle__ambient,
 body.battle-lean .screen--battle .battle__speedlines,
 body.battle-lean .screen--battle .battle__flash,
+body.battle-lean .screen--battle .battle__digit,
+body.battle-lean .screen--battle .battle__meme,
 body.battle-lean .screen--battle .floater,
 body.battle-lean .screen--battle .chaos-sticker,
 body.battle-lean .screen--battle .fx-dot {

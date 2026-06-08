@@ -9,7 +9,8 @@
     "client:dev": "vite",
     "build": "vite build",
     "preview": "vite preview --host 0.0.0.0",
-    "check": "node --check server.js && node --check server/config.js && node --check server/database.js && node --check server/game-server.js && node --check server/realtime.js && node --check server/static.js"
+    "check": "node --check server.js && node --check server/config.js && node --check server/security.js && node --check server/database.js && node --check server/game-server.js && node --check server/realtime.js && node --check server/static.js && node --check scripts/hardening-check.mjs && node scripts/hardening-check.mjs",
+    "test:hardening": "node scripts/hardening-check.mjs"
   },
   "devDependencies": {
     "vite": "^8.0.16"

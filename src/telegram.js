@@ -10,8 +10,8 @@ export function telegramName() {
   return tg?.initDataUnsafe?.user?.first_name || 'Alpha67';
 }
 
-export function telegramUserId() {
-  return tg?.initDataUnsafe?.user?.id || '';
+export function telegramInitData() {
+  return tg?.initData || '';
 }
 
 export function telegramLanguage() {

@@ -1,5 +1,4 @@
 import {
-  CHAOS_WORDS,
   CONFIG,
   DEFAULT_GUILD,
   DEFAULT_STATS,
@@ -20,10 +19,10 @@ import {
   randomBetween,
   sideOf,
 } from './config.js';
-import { animateElement, byId, escapeHtml, query, queryAll, restartClass, setImage, setText, showToast } from './dom.js';
+import { animateElement, applyImageFallback, byId, escapeHtml, query, queryAll, setImage, setText, showToast } from './dom.js';
 import { applyTranslations, detectClientLang, text } from './i18n.js';
 import { RealtimeClient } from './realtime.js';
-import { haptic, initTelegram, telegramName, telegramStartParam, telegramUserId, tg } from './telegram.js';
+import { haptic, initTelegram, telegramInitData, telegramName, telegramStartParam, tg } from './telegram.js';
 
 const RESULT_HOME_COOLDOWN_MS = 3000;
 
@@ -80,16 +79,7 @@ function loadState() {
   return sanitizeState(defaultState());
 }
 
-function createReferralCode() {
-  const id = telegramUserId();
-  if (id) return `u${Number(id).toString(36)}`;
-  return `g${Math.random().toString(36).slice(2, 9)}`;
-}
-
 function getPlayerId() {
-  const id = telegramUserId();
-  if (id) return `tg:${id}`;
-
   try {
     let sessionId = sessionStorage.getItem(SESSION_PLAYER_ID_KEY);
     if (!sessionId) {
@@ -123,14 +113,14 @@ export function bootGame() {
   if (lowPower) document.body.classList.add('low-power');
 
   let state = loadState();
-  if (!state.referrals.code) state.referrals.code = createReferralCode();
   saveState();
 
   const tr = (key, ...args) => text(state.lang, key, ...args);
   const NET = new RealtimeClient({
     buildHello: () => ({
       type: 'hello',
-      playerId: PLAYER_ID,
+      initData: telegramInitData(),
+      devPlayerId: PLAYER_ID,
       name: state.name,
       side: state.side,
       hand: state.hand,
@@ -183,9 +173,41 @@ export function bootGame() {
   let matchingRaf = 0;
   let lastTouchEnd = 0;
   let resultHomeCooldownTimer = 0;
+  let MY_PUBLIC_ID = '';
+  let lastHapticAt = 0;
+
+  const allowDevMocks = /^(localhost|127\.0\.0\.1|0\.0\.0\.0)$/i.test(location.hostname)
+    || new URLSearchParams(location.search).has('devMocks');
 
   function saveState() {
     try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch {}
+  }
+
+  function authHeaders(hasJson = false) {
+    const headers = {};
+    const initData = telegramInitData();
+    if (initData) headers['X-Telegram-Init-Data'] = initData;
+    else headers['X-Six-Seven-Dev-Player'] = PLAYER_ID;
+    if (hasJson) headers['Content-Type'] = 'application/json';
+    return headers;
+  }
+
+  async function apiFetch(path, options = {}) {
+    const body = options.body == null ? null : JSON.stringify(options.body);
+    const response = await fetch(NET.resolveHttpUrl(path), {
+      method: options.method || (body ? 'POST' : 'GET'),
+      cache: 'no-store',
+      headers: authHeaders(Boolean(body)),
+      body,
+    });
+    let payload = {};
+    try { payload = await response.json(); } catch {}
+    if (!response.ok || payload.ok === false) {
+      const error = new Error(payload.error || `http_${response.status}`);
+      error.payload = payload;
+      throw error;
+    }
+    return payload;
   }
 
   function show(screen) {
@@ -230,6 +252,7 @@ export function bootGame() {
     renderReferralCard();
     renderGuildCard();
     renderGlobalWar();
+    queryAll('img').forEach(img => applyImageFallback(img));
   }
 
   function syncTopBar() {
@@ -279,13 +302,13 @@ export function bootGame() {
     const mine = getHandImage(state.hand);
     const other = getHandImage(heroOtherHandId);
     if (state.side === 6) {
-      left.src = mine;
-      right.src = other;
+      applyImageFallback(left, mine);
+      applyImageFallback(right, other);
       left.dataset.owner = 'me';
       right.dataset.owner = 'other';
     } else {
-      left.src = other;
-      right.src = mine;
+      applyImageFallback(left, other);
+      applyImageFallback(right, mine);
       left.dataset.owner = 'other';
       right.dataset.owner = 'me';
     }
@@ -303,7 +326,7 @@ export function bootGame() {
   }
 
   function renderReferralCard() {
-    const count = Number(state.referrals.sent || 0);
+    const count = Number(state.referrals.accepted || state.referrals.sent || 0);
     setText('ref-count', count.toLocaleString('ru-RU'));
     setText('ref-title', count >= 67 ? 'RAID CAPTAIN' : count >= 6 ? 'GANG STARTER' : count >= 1 ? 'SCOUT' : tr('noCrowd'));
     setText('ref-meta', count >= 67 ? tr('maxAura') : tr('refsToNext', Math.max(1, (count < 1 ? 1 : count < 6 ? 6 : 67) - count)));
@@ -337,9 +360,9 @@ export function bootGame() {
     setText('guild-members', Number(state.guild.members || 0).toLocaleString('ru-RU'));
     setText('guild-reward', hasGuild ? '67' : '0');
     setText('guild-reward-line', hasGuild ? tr('weeklyRewardJoined') : tr('weeklyRewardEmpty'));
-    byId('guild-create')?.toggleAttribute('hidden', hasGuild);
+    byId('guild-create')?.toggleAttribute('hidden', hasGuild || !allowDevMocks);
     byId('guild-invite')?.toggleAttribute('hidden', !hasGuild);
-    byId('guild-random')?.toggleAttribute('hidden', hasGuild);
+    byId('guild-random')?.toggleAttribute('hidden', hasGuild || !allowDevMocks);
     byId('guild-leave')?.toggleAttribute('hidden', !hasGuild);
   }
 
@@ -453,8 +476,8 @@ export function bootGame() {
       localBot: true,
       scores: { p1: 0, p2: 0 },
       participants: [
-        { slot: 'p1', playerId: PLAYER_ID, name: state.name, side: state.side, hand: state.hand, digit: state.digitStyle },
-        { slot: 'p2', playerId: '', name: pick(RIVAL_NAMES), side: botSide, hand: pick(HAND_CATALOG).id, digit: pick(DIGIT_CATALOG).id, bot: true },
+        { slot: 'p1', id: MY_PUBLIC_ID || '', name: state.name, side: state.side, hand: state.hand, digit: state.digitStyle },
+        { slot: 'p2', id: '', name: pick(RIVAL_NAMES), side: botSide, hand: pick(HAND_CATALOG).id, digit: pick(DIGIT_CATALOG).id, bot: true },
       ],
     });
   }
@@ -536,11 +559,11 @@ export function bootGame() {
     const myImage = getHandImage(me.hand || state.hand);
     const enemyImage = getHandImage(enemy.hand || 'hand');
     if (state.side === 6) {
-      left.src = myImage;
-      right.src = enemyImage;
+      applyImageFallback(left, myImage);
+      applyImageFallback(right, enemyImage);
     } else {
-      left.src = enemyImage;
-      right.src = myImage;
+      applyImageFallback(left, enemyImage);
+      applyImageFallback(right, myImage);
     }
   }
 
@@ -590,8 +613,8 @@ export function bootGame() {
         if (label !== BATTLE.lastTimerText) {
           BATTLE.lastTimerText = label;
           if (timerNum) timerNum.textContent = label;
+          if (timerFg) timerFg.style.strokeDashoffset = (circumference * (1 - remain / CONFIG.roundMs)).toFixed(2);
         }
-        if (timerFg) timerFg.style.strokeDashoffset = (circumference * (1 - remain / CONFIG.roundMs)).toFixed(2);
         if (remain < 1800) {
           byId('battle-stage')?.classList.add('is-final-rush');
         }
@@ -639,7 +662,6 @@ export function bootGame() {
     const next = previous + amount;
     BATTLE.scores[slot] = next;
     updateScoreUI();
-    if (previous < 67 && next >= 67) showJackpot(slot);
   }
 
   function scheduleLocalBotTap() {
@@ -664,7 +686,6 @@ export function bootGame() {
       incrementLocalScore(BATTLE.enemySlot, burst);
       const enemySide = sideOf(BATTLE.participants.find(player => player.slot === BATTLE.enemySlot)?.side || oppositeSide(state.side));
       animateHandForSide(enemySide);
-      if (!lowPower && Number(BATTLE.scores[BATTLE.enemySlot] || 0) % 5 === 0) spawnFloater(enemySide, enemySide === 6 ? 'SIX!' : 'SEVEN!');
       scheduleLocalBotTap();
     }, waitForStart + delay);
   }
@@ -678,12 +699,12 @@ export function bootGame() {
     if (BATTLE.localBot) incrementLocalScore(BATTLE.mySlot, 1);
     else NET.send({ type: 'tap', matchId: BATTLE.matchId, seq: BATTLE.tapSeq, clientTs: Date.now() });
 
-    haptic.light();
+    const hapticNow = Date.now();
+    if (hapticNow - lastHapticAt > 110) {
+      lastHapticAt = hapticNow;
+      haptic.light();
+    }
     animateHandForSide(state.side);
-    if (!lowPower && BATTLE.tapSeq % 4 === 0) animateCentralDigit();
-    if (!lowPower && BATTLE.tapSeq % 5 === 0) spawnFloater(state.side, state.side === 6 ? 'SIX!' : 'SEVEN!');
-    if (!lowPower && BATTLE.tapSeq % 9 === 0) burstDots(state.side, 3);
-    if (!lowPower && BATTLE.tapSeq % 18 === 0) phraseStorm(1);
   }
 
   function handElementForSide(side) {
@@ -700,58 +721,6 @@ export function bootGame() {
       { transform: up },
       { transform: base },
     ], { duration: 150 });
-  }
-
-  function animateCentralDigit() {
-    restartClass(byId('battle-digit'), 'is-pop', 190);
-  }
-
-  function capFxNodes(layer) {
-    const limit = lowPower ? CONFIG.lowPowerFxNodeLimit : CONFIG.fxNodeLimit;
-    while (layer.childElementCount > limit) layer.firstElementChild?.remove();
-  }
-
-  function spawnFloater(side, label) {
-    const layer = byId('battle-floaters');
-    if (!layer) return;
-    capFxNodes(layer);
-    const el = document.createElement('div');
-    el.className = 'floater';
-    el.dataset.side = String(sideOf(side));
-    el.textContent = label;
-    el.style.left = `${sideOf(side) === 6 ? randomBetween(12, 42) : randomBetween(58, 88)}%`;
-    el.style.top = `${randomBetween(28, 68)}%`;
-    el.style.setProperty('--r', `${randomBetween(-18, 18).toFixed(1)}deg`);
-    layer.appendChild(el);
-    window.setTimeout(() => el.remove(), 850);
-  }
-
-  function burstDots(side, amount) {
-    const layer = byId('battle-floaters');
-    if (!layer) return;
-    capFxNodes(layer);
-    const baseX = sideOf(side) === 6 ? 28 : 72;
-    for (let index = 0; index < amount; index += 1) {
-      const dot = document.createElement('span');
-      dot.className = 'particle';
-      dot.dataset.side = String(sideOf(side));
-      dot.style.left = `${baseX + randomBetween(-8, 8)}%`;
-      dot.style.top = `${randomBetween(52, 70)}%`;
-      dot.style.background = sideOf(side) === 6 ? 'var(--six)' : 'var(--seven)';
-      dot.style.setProperty('--dx', `${randomBetween(-42, 42).toFixed(1)}px`);
-      dot.style.setProperty('--dy', `${randomBetween(-92, -36).toFixed(1)}px`);
-      layer.appendChild(dot);
-      window.setTimeout(() => dot.remove(), 700);
-    }
-  }
-
-  function phraseStorm(amount) {
-    for (let index = 0; index < amount; index += 1) {
-      window.setTimeout(() => {
-        const side = Math.random() < 0.5 ? 6 : 7;
-        spawnFloater(side, pick(CHAOS_WORDS));
-      }, index * (lowPower ? 86 : 46));
-    }
   }
 
   function showJackpot(slot) {
@@ -884,11 +853,18 @@ export function bootGame() {
 
   function syncFromServerPlayer(player) {
     if (!player) return;
+    MY_PUBLIC_ID = player.publicId || player.id || MY_PUBLIC_ID;
     state.name = player.name || state.name;
     state.side = sideOf(player.side || state.side);
     state.coins = Number(player.coins ?? state.coins);
+    state.hand = isKnownHand(player.hand) ? player.hand : state.hand;
+    state.digitStyle = isKnownDigit(player.digit) ? player.digit : state.digitStyle;
+    if (Array.isArray(player.ownedHands)) state.ownedHands = Array.from(new Set(['hand', ...player.ownedHands])).filter(isKnownHand);
+    if (Array.isArray(player.ownedDigits)) state.ownedDigits = Array.from(new Set(['classic', ...player.ownedDigits])).filter(isKnownDigit);
     state.stats = { ...state.stats, ...(player.stats || {}) };
     state.weeklyScore = Number(player.weeklyScore ?? state.weeklyScore);
+    state.referrals = { ...state.referrals, ...(player.referrals || {}) };
+    if (player.guild !== undefined) state.guild = player.guild || clone(DEFAULT_GUILD);
     saveState();
     renderAllStatic();
   }
@@ -912,14 +888,15 @@ export function bootGame() {
       if (SHOP_TAB === 'hands') {
         const image = document.createElement('img');
         image.className = 'shop-card__img';
-        image.src = item.img;
         image.alt = item.name;
+        applyImageFallback(image, item.img);
         card.appendChild(image);
       } else {
         const preview = document.createElement('div');
         preview.className = 'shop-card__digit-preview';
         preview.innerHTML = `<img src="${item.img6}" alt="6"><img src="${item.img7}" alt="7">`;
         card.appendChild(preview);
+        queryAll('img', preview).forEach(img => applyImageFallback(img));
       }
 
       const name = document.createElement('div');
@@ -948,39 +925,45 @@ export function bootGame() {
     });
   }
 
-  function equipItem(item) {
-    if (SHOP_TAB === 'hands') state.hand = item.id;
-    else state.digitStyle = item.id;
-    saveState();
-    syncHeroHands();
-    syncHeroDigits();
-    renderShop();
-    NET.sendHello();
-    haptic.success();
+  async function equipItem(item) {
+    try {
+      const payload = await apiFetch('/api/shop/equip', {
+        method: 'POST',
+        body: { kind: SHOP_TAB, itemId: item.id },
+      });
+      syncFromServerPlayer(payload.player);
+      renderShop();
+      NET.sendHello();
+      haptic.success();
+    } catch {
+      showToast('Server sync failed');
+      haptic.error();
+    }
   }
 
-  function buyItem(item) {
+  async function buyItem(item) {
     if (state.coins < item.price) {
       showToast(tr('noCoins'));
       haptic.error();
       return;
     }
-    state.coins -= item.price;
-    if (SHOP_TAB === 'hands') {
-      state.ownedHands = Array.from(new Set([...state.ownedHands, item.id]));
-      state.hand = item.id;
-    } else {
-      state.ownedDigits = Array.from(new Set([...state.ownedDigits, item.id]));
-      state.digitStyle = item.id;
+    try {
+      const payload = await apiFetch('/api/shop/buy', {
+        method: 'POST',
+        body: { kind: SHOP_TAB, itemId: item.id },
+      });
+      syncFromServerPlayer(payload.player);
+      renderShop();
+      NET.sendHello();
+      haptic.success();
+    } catch (error) {
+      showToast(error.message === 'not_enough_coins' ? tr('noCoins') : 'Server sync failed');
+      haptic.error();
     }
-    saveState();
-    renderAllStatic();
-    renderShop();
-    NET.sendHello();
-    haptic.success();
   }
 
   function seededGuildTop() {
+    if (!allowDevMocks) return [];
     const names = ['Six Mafia', 'Seven Cult', 'Aura Lab', 'Tap Syndicate', 'Mango Mode', 'No Chill Crew'];
     return Array.from({ length: 67 }, (_, index) => ({
       rank: index + 1,
@@ -1001,15 +984,7 @@ export function bootGame() {
     topLoading = true;
 
     try {
-      const response = await fetch(NET.resolveHttpUrl('/api/top'), { cache: 'no-store' });
-      if (!response.ok) {
-        if (requestId === topRequestId) {
-          topLoading = false;
-          if (!query('[data-screen="top"]')?.hidden) renderTop({ request: false });
-        }
-        return;
-      }
-      const payload = await response.json();
+      const payload = await apiFetch('/api/top');
       if (requestId !== topRequestId) return;
       TOP = Array.isArray(payload.top) ? payload.top : [];
       GLOBAL_WAR = payload.globalWar || GLOBAL_WAR;
@@ -1021,6 +996,15 @@ export function bootGame() {
         topLoading = false;
         if (!query('[data-screen="top"]')?.hidden) renderTop({ request: false });
       }
+    }
+  }
+
+  async function loadServerState() {
+    try {
+      const payload = await apiFetch('/api/me');
+      if (payload.player) syncFromServerPlayer(payload.player);
+    } catch {
+      // Realtime reconnect UI already covers backend availability.
     }
   }
 
@@ -1038,7 +1022,7 @@ export function bootGame() {
       row.className = 'top-row';
       row.innerHTML = `
         <div class="top-row__rank">--</div>
-        <div class="top-row__name">${topLoading ? 'LOADING TOP...' : 'NO REAL PLAYERS YET'}</div>
+        <div class="top-row__name">${topLoading ? 'LOADING TOP...' : TOP_TAB === 'guilds' ? 'GUILDS ARE NOT LIVE YET' : 'NO REAL PLAYERS YET'}</div>
         <div class="top-row__right">
           <span class="top-row__score">0</span>
         </div>
@@ -1051,14 +1035,15 @@ export function bootGame() {
       const place = player.rank || index + 1;
       const row = document.createElement('div');
       row.className = 'top-row';
-      if (player.id === PLAYER_ID) row.classList.add('is-me');
+      const isMe = player.publicId === MY_PUBLIC_ID || player.id === MY_PUBLIC_ID;
+      if (isMe) row.classList.add('is-me');
       if (place === 1) row.classList.add('top-row--gold');
       else if (place === 2) row.classList.add('top-row--silver');
       else if (place === 3) row.classList.add('top-row--bronze');
       else if (place === 67) row.classList.add('top-row--lucky67');
       row.innerHTML = `
         <div class="top-row__rank">${place}</div>
-        <div class="top-row__name">${escapeHtml(player.name || 'Alpha67')}${player.id === PLAYER_ID ? ' (YOU)' : ''}</div>
+        <div class="top-row__name">${escapeHtml(player.name || 'Alpha67')}${isMe ? ' (YOU)' : ''}</div>
         <div class="top-row__right">
           <span class="top-row__side" data-side="${sideOf(player.side)}">${sideOf(player.side)}</span>
           <span class="top-row__score">${Number(player.score || 0).toLocaleString('ru-RU')}</span>
@@ -1091,6 +1076,10 @@ export function bootGame() {
   }
 
   function createGuild() {
+    if (!allowDevMocks) {
+      showToast('Guilds are not live yet');
+      return;
+    }
     const name = prompt(tr('createGuildPrompt'));
     if (!name) return;
     const clean = name.replace(/[^A-Za-zА-Яа-яЁё0-9 _.-]/g, '').trim().slice(0, 20) || `GANG ${state.side}`;
@@ -1110,6 +1099,10 @@ export function bootGame() {
   }
 
   function joinRandomGuild() {
+    if (!allowDevMocks) {
+      showToast('Guilds are not live yet');
+      return;
+    }
     state.guild = {
       id: `fake${Date.now().toString(36)}`,
       name: state.side === 6 ? 'Six Mafia' : 'Seven Cult',
@@ -1134,7 +1127,7 @@ export function bootGame() {
   }
 
   function telegramBotUsername() {
-    return String(window.SIX_SEVEN_BOT_USERNAME || '').replace(/^@/, '').replace(/[^A-Za-z0-9_]/g, '');
+    return String(window.SIX_SEVEN_BOT_USERNAME || 'sixseven_game_bot').replace(/^@/, '').replace(/[^A-Za-z0-9_]/g, '');
   }
 
   function telegramAppName() {
@@ -1150,7 +1143,14 @@ export function bootGame() {
     return startParam ? `${base}?startapp=${encodeURIComponent(startParam)}` : base;
   }
 
-  function shareText(label, url = referralLink() || telegramAppLink()) {
+  function telegramBotDeepLink(startParam = '') {
+    const bot = telegramBotUsername();
+    if (!bot) return '';
+    const base = `https://t.me/${bot}`;
+    return startParam ? `${base}?startapp=${encodeURIComponent(startParam)}` : base;
+  }
+
+  function shareText(label, url = referralLink() || telegramBotDeepLink()) {
     const params = new URLSearchParams();
     if (url) params.set('url', url);
     params.set('text', label);
@@ -1161,8 +1161,9 @@ export function bootGame() {
   }
 
   function referralLink() {
+    if (!state.referrals.code) return telegramBotDeepLink();
     const param = `r_${state.referrals.code}_${state.side}`;
-    return telegramAppLink(param);
+    return telegramBotDeepLink(param);
   }
 
   function bindEvents() {
@@ -1195,9 +1196,6 @@ export function bootGame() {
     byId('result-shame')?.addEventListener('click', () => shareText(`${state.side} GANG scored ${byId('result-my-score')?.textContent || 0} in 6.7 sec. Beat this.`));
     byId('result-raid')?.addEventListener('click', () => shareText(`${state.side} GANG RAID. ${oppositeSide(state.side)} GANG defend your aura.`));
     byId('ref-invite')?.addEventListener('click', () => {
-      state.referrals.sent += 1;
-      saveState();
-      renderReferralCard();
       shareText(`I picked ${state.side} GANG. Join or accept aura debt.`, referralLink());
     });
     byId('guild-create')?.addEventListener('click', createGuild);
@@ -1254,16 +1252,20 @@ export function bootGame() {
     lastTouchEnd = time;
   }
 
-  function bootStartParam() {
+  async function bootStartParam() {
     const raw = telegramStartParam() || new URLSearchParams(location.search).get('tgWebAppStartParam') || '';
-    const ref = raw.match(/^r_([A-Za-z0-9]{4,24})(?:_([67]))?$/);
+    const ref = raw.match(/^r_(r[A-Za-z0-9]{8,24})(?:_([67]))?$/);
     if (!ref || state.referrals.firstTouchClaimed || ref[1] === state.referrals.code) return;
-    state.referrals.firstTouchClaimed = true;
-    state.referrals.referredBy = ref[1];
-    state.coins += 67;
-    if (ref[2]) state.side = Number(ref[2]);
-    saveState();
-    showToast('+67 aura');
+    try {
+      const payload = await apiFetch('/api/referral/claim', {
+        method: 'POST',
+        body: { code: ref[1], side: ref[2] ? Number(ref[2]) : undefined },
+      });
+      if (payload.player) syncFromServerPlayer(payload.player);
+      if (payload.claimed) showToast('+67 aura');
+    } catch {
+      // A malformed, repeated, or self-referral start param should not block boot.
+    }
   }
 
   function bindRealtime() {
@@ -1305,16 +1307,11 @@ export function bootGame() {
       const enemy = Number(BATTLE.scores[BATTLE.enemySlot] || 0);
       if (mine > previousMine) {
         animateHandForSide(state.side);
-        if (mine === 67) showJackpot(BATTLE.mySlot);
       }
       if (enemy > previousEnemy) {
         const enemySide = sideOf(BATTLE.participants.find(player => player.slot === BATTLE.enemySlot)?.side || oppositeSide(state.side));
         animateHandForSide(enemySide);
-        if (!lowPower && enemy % 5 === 0) spawnFloater(enemySide, enemySide === 6 ? 'SIX!' : 'SEVEN!');
       }
-    });
-    NET.on('jackpot', message => {
-      if (message.matchId === BATTLE.matchId) showJackpot(message.slot);
     });
     NET.on('match_result', renderResult);
     NET.on('top_state', message => {
@@ -1334,6 +1331,7 @@ export function bootGame() {
   bindEvents();
   bootStartParam();
   renderAllStatic();
+  loadServerState();
   NET.connect();
 
   window.setInterval(() => {

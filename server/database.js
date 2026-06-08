@@ -1,5 +1,7 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { DIGIT_IDS, HAND_IDS, SHOP_CATALOG } from './config.js';
 
 const DEFAULT_STATS = Object.freeze({
   wins: 0,
@@ -11,8 +13,20 @@ const DEFAULT_STATS = Object.freeze({
   streakType: 'none',
 });
 
+const DEFAULT_REFERRALS = Object.freeze({
+  code: '',
+  sent: 0,
+  accepted: 0,
+  referredBy: '',
+  firstTouchClaimed: false,
+});
+
 function cloneStats(value = {}) {
   return { ...DEFAULT_STATS, ...(value || {}) };
+}
+
+function cloneReferrals(value = {}) {
+  return { ...DEFAULT_REFERRALS, ...(value || {}) };
 }
 
 function safeName(name) {
@@ -24,9 +38,36 @@ function safeSide(side) {
   return Number(side) === 7 ? 7 : 6;
 }
 
+function safeSkin(value, list, fallback) {
+  return list.includes(String(value || '')) ? String(value) : fallback;
+}
+
+function uniqueKnown(values, known, fallback) {
+  return Array.from(new Set([fallback, ...(Array.isArray(values) ? values : [])].map(String))).filter(item => known.includes(item));
+}
+
+function fallbackPublicId(id) {
+  return `u_${crypto.createHash('sha256').update(String(id || '')).digest('hex').slice(0, 24)}`;
+}
+
+function createHttpError(statusCode, code) {
+  return Object.assign(new Error(code), { statusCode, code });
+}
+
+function catalogItem(kind, itemId) {
+  const list = kind === 'hands' ? SHOP_CATALOG.hands : SHOP_CATALOG.digits;
+  return list.find(item => item.id === itemId) || null;
+}
+
+function normalizeKind(kind) {
+  if (kind === 'hand') return 'hands';
+  if (kind === 'digit') return 'digits';
+  return kind === 'hands' || kind === 'digits' ? kind : '';
+}
+
 function createEmptyDb() {
   return {
-    version: 1,
+    version: 2,
     createdAt: Date.now(),
     updatedAt: Date.now(),
     players: {},
@@ -53,11 +94,18 @@ export class GameDatabase {
       this.data = {
         ...createEmptyDb(),
         ...parsed,
+        version: 2,
         players: parsed.players || {},
         matches: parsed.matches || {},
         globalWar: { six: 0, seven: 0, ...(parsed.globalWar || {}) },
       };
-    } catch (error) {
+      let changed = false;
+      for (const [id, player] of Object.entries(this.data.players)) {
+        this.data.players[id] = this.normalizePlayer(id, player);
+        changed = true;
+      }
+      if (changed) this.persist();
+    } catch {
       const backup = `${this.filePath}.broken-${Date.now()}`;
       try {
         if (fs.existsSync(this.filePath)) fs.renameSync(this.filePath, backup);
@@ -75,27 +123,77 @@ export class GameDatabase {
     fs.renameSync(tmp, this.filePath);
   }
 
+  normalizePlayer(id, player = {}, profile = {}) {
+    const publicId = String(profile.publicId || player.publicId || fallbackPublicId(id));
+    const referrals = cloneReferrals(player.referrals);
+    if (profile.referralCode && !referrals.code) referrals.code = String(profile.referralCode);
+    return {
+      ...player,
+      id,
+      publicId,
+      name: safeName(profile.name ?? player.name),
+      side: safeSide(profile.side ?? player.side),
+      coins: Math.max(0, Number(player.coins ?? 250)),
+      hand: safeSkin(profile.hand ?? player.hand, HAND_IDS, 'hand'),
+      digit: safeSkin(profile.digit ?? player.digit ?? player.digitStyle, DIGIT_IDS, 'classic'),
+      ownedHands: uniqueKnown(player.ownedHands, HAND_IDS, 'hand'),
+      ownedDigits: uniqueKnown(player.ownedDigits, DIGIT_IDS, 'classic'),
+      stats: cloneStats(player.stats),
+      weeklyScore: Math.max(0, Number(player.weeklyScore || 0)),
+      referrals,
+      guild: player.guild || null,
+      createdAt: Number(player.createdAt || Date.now()),
+      updatedAt: Number(player.updatedAt || Date.now()),
+    };
+  }
+
+  serializePlayer(player) {
+    const normalized = this.normalizePlayer(player.id, player);
+    return {
+      id: normalized.publicId,
+      publicId: normalized.publicId,
+      name: normalized.name,
+      side: normalized.side,
+      coins: normalized.coins,
+      hand: normalized.hand,
+      digit: normalized.digit,
+      ownedHands: normalized.ownedHands,
+      ownedDigits: normalized.ownedDigits,
+      stats: cloneStats(normalized.stats),
+      weeklyScore: normalized.weeklyScore,
+      referrals: cloneReferrals(normalized.referrals),
+      guild: normalized.guild,
+      createdAt: normalized.createdAt,
+      updatedAt: normalized.updatedAt,
+    };
+  }
+
   getOrCreatePlayer(playerId, profile = {}) {
     const id = String(playerId || '').trim();
     if (!id) throw new Error('playerId is required');
     if (!this.data.players[id]) {
-      this.data.players[id] = {
+      this.data.players[id] = this.normalizePlayer(id, {
         id,
-        name: safeName(profile.name),
-        side: safeSide(profile.side),
         coins: 250,
         stats: cloneStats(),
         weeklyScore: 0,
+        ownedHands: ['hand'],
+        ownedDigits: ['classic'],
+        referrals: { ...DEFAULT_REFERRALS, code: profile.referralCode || '' },
         createdAt: Date.now(),
         updatedAt: Date.now(),
-      };
+      }, profile);
       this.persist();
     } else {
-      const player = this.data.players[id];
-      player.name = safeName(profile.name || player.name);
-      player.side = safeSide(profile.side || player.side);
-      player.stats = cloneStats(player.stats);
-      player.updatedAt = Date.now();
+      const existing = this.data.players[id];
+      this.data.players[id] = this.normalizePlayer(id, {
+        ...existing,
+        referrals: {
+          ...cloneReferrals(existing.referrals),
+          code: existing.referrals?.code || profile.referralCode || '',
+        },
+      }, profile);
+      this.data.players[id].updatedAt = Date.now();
       this.persist();
     }
     return this.data.players[id];
@@ -105,9 +203,88 @@ export class GameDatabase {
     const player = this.getOrCreatePlayer(playerId, profile);
     if (profile.name != null) player.name = safeName(profile.name);
     if (profile.side != null) player.side = safeSide(profile.side);
+    if (profile.publicId != null) player.publicId = String(profile.publicId);
+    if (profile.referralCode && !player.referrals.code) player.referrals.code = String(profile.referralCode);
+    if (profile.hand != null) player.hand = safeSkin(profile.hand, HAND_IDS, player.hand);
+    if (profile.digit != null) player.digit = safeSkin(profile.digit, DIGIT_IDS, player.digit);
     player.updatedAt = Date.now();
     this.persist();
     return player;
+  }
+
+  buyItem(playerId, kindInput, itemIdInput) {
+    const kind = normalizeKind(kindInput);
+    const itemId = String(itemIdInput || '');
+    const item = catalogItem(kind, itemId);
+    if (!item) throw createHttpError(404, 'shop_item_not_found');
+
+    const player = this.getOrCreatePlayer(playerId);
+    const ownedKey = kind === 'hands' ? 'ownedHands' : 'ownedDigits';
+    const equipKey = kind === 'hands' ? 'hand' : 'digit';
+    if (!player[ownedKey].includes(item.id)) {
+      if (Number(player.coins || 0) < item.price) throw createHttpError(409, 'not_enough_coins');
+      player.coins = Number(player.coins || 0) - item.price;
+      player[ownedKey] = Array.from(new Set([...player[ownedKey], item.id]));
+    }
+    player[equipKey] = item.id;
+    player.updatedAt = Date.now();
+    this.persist();
+    return player;
+  }
+
+  equipItem(playerId, kindInput, itemIdInput) {
+    const kind = normalizeKind(kindInput);
+    const itemId = String(itemIdInput || '');
+    const item = catalogItem(kind, itemId);
+    if (!item) throw createHttpError(404, 'shop_item_not_found');
+
+    const player = this.getOrCreatePlayer(playerId);
+    const ownedKey = kind === 'hands' ? 'ownedHands' : 'ownedDigits';
+    const equipKey = kind === 'hands' ? 'hand' : 'digit';
+    if (!player[ownedKey].includes(item.id)) throw createHttpError(403, 'shop_item_not_owned');
+    player[equipKey] = item.id;
+    player.updatedAt = Date.now();
+    this.persist();
+    return player;
+  }
+
+  claimReferral(playerId, codeInput, sideInput) {
+    const code = String(codeInput || '').trim();
+    if (!/^r[A-Za-z0-9]{8,24}$/.test(code)) throw createHttpError(400, 'bad_referral_code');
+
+    const player = this.getOrCreatePlayer(playerId);
+    if (player.referrals.code === code) throw createHttpError(400, 'self_referral');
+    if (player.referrals.firstTouchClaimed) {
+      return { claimed: false, reason: 'already_claimed', player };
+    }
+
+    const owner = Object.values(this.data.players).find(candidate => candidate?.referrals?.code === code);
+    if (!owner) return { claimed: false, reason: 'referrer_not_found', player };
+
+    player.referrals.firstTouchClaimed = true;
+    player.referrals.referredBy = code;
+    player.coins = Number(player.coins || 0) + 67;
+    if (sideInput != null) player.side = safeSide(sideInput);
+    owner.referrals = cloneReferrals(owner.referrals);
+    owner.referrals.accepted = Number(owner.referrals.accepted || 0) + 1;
+    owner.referrals.sent = Math.max(Number(owner.referrals.sent || 0), owner.referrals.accepted);
+    player.updatedAt = Date.now();
+    owner.updatedAt = Date.now();
+    this.persist();
+    return { claimed: true, player };
+  }
+
+  serializeParticipant(participant) {
+    return {
+      slot: participant.slot,
+      id: participant.bot ? '' : String(participant.publicId || fallbackPublicId(participant.playerId)),
+      publicId: participant.bot ? '' : String(participant.publicId || fallbackPublicId(participant.playerId)),
+      name: safeName(participant.name),
+      side: safeSide(participant.side),
+      hand: safeSkin(participant.hand, HAND_IDS, 'hand'),
+      digit: safeSkin(participant.digit, DIGIT_IDS, 'classic'),
+      bot: Boolean(participant.bot),
+    };
   }
 
   finalizeMatch(match) {
@@ -120,8 +297,11 @@ export class GameDatabase {
     const participants = match.participants.map(p => ({
       slot: p.slot,
       playerId: p.playerId || '',
+      publicId: p.publicId || '',
       name: safeName(p.name),
       side: safeSide(p.side),
+      hand: safeSkin(p.hand, HAND_IDS, 'hand'),
+      digit: safeSkin(p.digit, DIGIT_IDS, 'classic'),
       bot: Boolean(p.bot),
     }));
     const scores = { ...match.scores };
@@ -153,6 +333,8 @@ export class GameDatabase {
       const won = winnerSlot === p.slot;
       const tie = winnerSlot == null;
       player.side = p.side;
+      player.hand = p.hand;
+      player.digit = p.digit;
       player.stats = cloneStats(player.stats);
       if (won) {
         player.stats.wins += 1;
@@ -187,10 +369,12 @@ export class GameDatabase {
     if (!record) return null;
     return {
       ...record,
+      participants: record.participants.map(participant => this.serializeParticipant(participant)),
       playerStates: record.participants
         .filter(p => !p.bot && p.playerId)
         .reduce((acc, p) => {
-          acc[p.slot] = this.data.players[p.playerId] || null;
+          const player = this.data.players[p.playerId];
+          acc[p.slot] = player ? this.serializePlayer(player) : null;
           return acc;
         }, {}),
     };
@@ -198,8 +382,10 @@ export class GameDatabase {
 
   getTopPlayers(limit = 100) {
     return Object.values(this.data.players)
+      .map(p => this.serializePlayer(p))
       .map(p => ({
-        id: p.id,
+        id: p.publicId,
+        publicId: p.publicId,
         name: p.name,
         side: safeSide(p.side),
         score: Math.max(0, Number(p.weeklyScore || 0)),

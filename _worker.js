@@ -6,7 +6,7 @@ export default {
     if (!contentType.includes('text/html')) return asset;
 
     const apiBase = env.SIX_SEVEN_API_BASE || 'https://six-seven-api.onrender.com';
-    const botUsername = env.SIX_SEVEN_BOT_USERNAME || '';
+    const botUsername = env.SIX_SEVEN_BOT_USERNAME || 'sixseven_game_bot';
     const appName = env.SIX_SEVEN_APP_NAME || '';
     const configScript = [
       '<script>',

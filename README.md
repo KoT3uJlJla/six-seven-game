@@ -18,7 +18,7 @@ Server-authoritative PvP tap game for Telegram Mini Apps. A player picks side `6
 
 - Frontend: Vite + native ES modules
 - Backend: Node ESM using built-in HTTP/WebSocket primitives
-- Persistence: JSON file database for MVP state
+- Persistence: file database for local/dev only unless explicitly enabled in production
 - Hosting: Cloudflare Pages for Mini App assets, Render or another Node host for the realtime server
 
 ## Run Locally
@@ -37,7 +37,11 @@ npm run build
 npm run check
 ```
 
-When `dist/index.html` exists, `server.js` serves the built client. Without `dist`, it serves the source files for development.
+`server.js` is API/realtime-only by default. It serves static files only when `SERVE_STATIC=1`, and then only from `dist/`. For local UI development, run the Vite client separately:
+
+```bash
+npm run client:dev
+```
 
 ## Layout
 
@@ -73,12 +77,18 @@ Server to client:
 
 ## Production Config
 
-Cloudflare Pages should expose:
+Cloudflare Pages should expose only public config:
 
 ```text
 SIX_SEVEN_API_BASE=https://your-node-realtime-service.example.com
-SIX_SEVEN_BOT_USERNAME=your_bot_username
+SIX_SEVEN_BOT_USERNAME=sixseven_game_bot
 SIX_SEVEN_APP_NAME=your_mini_app_short_name
+```
+
+Referral links do not use `SIX_SEVEN_APP_NAME`; they are built as:
+
+```text
+https://t.me/sixseven_game_bot?startapp=r_<masked_code>_<side>
 ```
 
 The backend accepts:
@@ -86,7 +96,14 @@ The backend accepts:
 ```text
 NODE_VERSION=22
 PORT=3000
-SIX_SEVEN_DB=data/six-seven-db.json
+NODE_ENV=production
+JWT_SECRET=<long random secret>
+TELEGRAM_BOT_TOKEN=<bot token from BotFather>
+ALLOWED_ORIGINS=https://sixseven-a2f.pages.dev
+SIX_SEVEN_ALLOW_FILE_DB=1
+SIX_SEVEN_DB=/var/data/six-seven-db.json
 ```
+
+In production, the server fails fast without `JWT_SECRET` and `TELEGRAM_BOT_TOKEN`. It also requires `DATABASE_URL` unless file persistence is explicitly enabled with `SIX_SEVEN_ALLOW_FILE_DB=1`. The current implementation uses the file database; keep it outside any public static root.
 
 Existing Render services configured with `Root Directory: backend` are supported by the lightweight `backend/` shim. It installs no duplicate backend code and starts the canonical root server.

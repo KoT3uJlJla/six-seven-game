@@ -21,7 +21,44 @@ export function setText(id, value) {
 
 export function setImage(id, src) {
   const el = byId(id);
-  if (el) el.src = src;
+  if (el) applyImageFallback(el, src);
+}
+
+export function assetFallbackCandidates(src) {
+  const clean = String(src || '').trim();
+  if (!clean) return [];
+  if (/^https?:\/\//i.test(clean)) return [clean];
+
+  const assetPath = clean.replace(/^\.?\//, '');
+  if (!assetPath.startsWith('assets/')) return [clean];
+  return [
+    clean,
+    `https://cdn.jsdelivr.net/gh/KoT3uJlJla/six-seven-game@main/${assetPath}`,
+    `https://raw.githubusercontent.com/KoT3uJlJla/six-seven-game/main/${assetPath}`,
+  ];
+}
+
+export function applyImageFallback(img, src = img?.getAttribute?.('src') || '') {
+  if (!img) return;
+  const candidates = assetFallbackCandidates(src);
+  if (!candidates.length) return;
+
+  img.dataset.assetSrc = candidates[0];
+  img.dataset.assetFallbackIndex = '0';
+  img.dataset.assetFallbackList = candidates.join('\n');
+
+  if (!img.dataset.assetFallbackBound) {
+    img.dataset.assetFallbackBound = '1';
+    img.addEventListener('error', () => {
+      const list = String(img.dataset.assetFallbackList || '').split('\n').filter(Boolean);
+      const next = Number(img.dataset.assetFallbackIndex || 0) + 1;
+      if (!list[next]) return;
+      img.dataset.assetFallbackIndex = String(next);
+      img.src = list[next];
+    });
+  }
+
+  if (img.getAttribute('src') !== candidates[0]) img.src = candidates[0];
 }
 
 export function escapeHtml(value) {
@@ -46,14 +83,6 @@ export function animateElement(el, keyframes, options = {}) {
   const lastFrame = keyframes[keyframes.length - 1] || {};
   if (lastFrame.transform) el.style.transform = lastFrame.transform;
   return null;
-}
-
-export function restartClass(el, className, duration = 220) {
-  if (!el) return;
-  el.classList.remove(className);
-  void el.offsetWidth;
-  el.classList.add(className);
-  window.setTimeout(() => el.classList.remove(className), duration);
 }
 
 export function showToast(message) {

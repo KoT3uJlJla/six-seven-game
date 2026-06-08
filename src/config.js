@@ -2,9 +2,6 @@ export const CONFIG = {
   matchmakingMs: 6700,
   roundMs: 6700,
   startDelayMs: 1200,
-  fxNodeLimit: 38,
-  lowPowerFxNodeLimit: 18,
-  scoreFxEveryNthTap: 2,
   reconnectBaseMs: 900,
   reconnectMaxMs: 4200,
   matchFallbackGraceMs: 650,
@@ -30,19 +27,6 @@ export const DIGIT_CATALOG = Object.freeze([
   { id: 'clown', name: 'JOKER', price: 400, rarity: 'rare', img6: 'assets/digits/clown-6.png', img7: 'assets/digits/clown-7.png' },
   { id: 'devil', name: 'DEMON', price: 1200, rarity: 'epic', img6: 'assets/digits/devil-6.png', img7: 'assets/digits/devil-7.png' },
   { id: 'robo', name: 'CYBORG', price: 2500, rarity: 'legend', img6: 'assets/digits/robo-6.png', img7: 'assets/digits/robo-7.png' },
-]);
-
-export const CHAOS_WORDS = Object.freeze([
-  'SIX!',
-  'SEVEN!',
-  '+67 AURA',
-  'COOKED',
-  'LOCK IN',
-  'NO AURA',
-  'SKIBIDI CHECK',
-  'BRAINROT',
-  'WHAT THE SIGMA',
-  'MANGO MODE',
 ]);
 
 export const RIVAL_NAMES = Object.freeze([
