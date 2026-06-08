@@ -3,7 +3,7 @@ import { telegramLanguage } from './telegram.js';
 const TEXT = {
   en: {
     finding: 'FINDING OPPONENT',
-    found: 'Opponent locked. Syncing server clock...',
+    found: 'Opponent locked.',
     bot: 'Nobody answered. Bot spawned.',
     ready: 'GET READY',
     go: 'GO!',
@@ -51,10 +51,11 @@ const TEXT = {
     loseTitle: 'MINUS AURA',
     localResult: id => `Bot match finished locally. Match: ${id}`,
     serverResult: id => `Final score was committed by backend. Match: ${id}`,
+    battleResult: id => `Battle finished. Match: ${id}`,
   },
   ru: {
     finding: 'ИЩЕМ СОПЕРНИКА',
-    found: 'Соперник найден. Синхронизируем часы...',
+    found: 'Соперник найден.',
     bot: 'Никто не ответил. Ставим бота.',
     ready: 'ПРИГОТОВЬСЯ',
     go: 'GO!',
@@ -102,6 +103,7 @@ const TEXT = {
     loseTitle: 'МИНУС АУРА',
     localResult: id => `Бот-матч завершен локально. Матч: ${id}`,
     serverResult: id => `Итог зафиксирован сервером. Матч: ${id}`,
+    battleResult: id => `Баттл завершен. Матч: ${id}`,
   },
 };
 

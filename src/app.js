@@ -25,6 +25,8 @@ import { applyTranslations, detectClientLang, text } from './i18n.js';
 import { RealtimeClient } from './realtime.js';
 import { haptic, initTelegram, telegramName, telegramStartParam, telegramUserId, tg } from './telegram.js';
 
+const RESULT_HOME_COOLDOWN_MS = 3000;
+
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
@@ -186,6 +188,7 @@ export function bootGame() {
   let matchingTimer = 0;
   let matchingRaf = 0;
   let lastTouchEnd = 0;
+  let resultHomeCooldownTimer = 0;
 
   function saveState() {
     try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch {}
@@ -197,6 +200,7 @@ export function bootGame() {
       if (el) el.hidden = name !== screen;
     });
     document.body.classList.toggle('is-immersive', ['matching', 'battle', 'result'].includes(screen));
+    document.body.classList.toggle('battle-lean', screen === 'battle');
     queryAll('.nav-item').forEach(btn => btn.classList.remove('is-active'));
     query(`.nav-item[data-nav="${screen}"]`)?.classList.add('is-active');
 
@@ -518,10 +522,10 @@ export function bootGame() {
     if (digit) digit.dataset.side = String(state.side);
 
     const stage = byId('battle-stage');
+    query('.battle__sync')?.remove();
     if (stage) {
       stage.classList.remove('is-final-rush');
       stage.classList.add('is-playing');
-      ensureBattleSyncBadge(stage, payload.bot ? 'BOT AFTER 6.7 SEC' : tr('serverTruth'));
     }
     const tapHint = query('.tap-zone__hint');
     if (tapHint) tapHint.textContent = tr('ready');
@@ -545,16 +549,6 @@ export function bootGame() {
       left.src = enemyImage;
       right.src = myImage;
     }
-  }
-
-  function ensureBattleSyncBadge(stage, label) {
-    let badge = query('.battle__sync');
-    if (!badge) {
-      badge = document.createElement('div');
-      badge.className = 'battle__sync';
-      stage.appendChild(badge);
-    }
-    badge.textContent = label;
   }
 
   function setBattleMeme(label) {
@@ -596,7 +590,6 @@ export function bootGame() {
           const hint = query('.tap-zone__hint');
           if (hint) hint.textContent = tr('live');
           setBattleMeme(tr('live'));
-          phraseStorm(10);
         }
 
         const remain = Math.max(0, BATTLE.endsAt - clockNow);
@@ -608,8 +601,6 @@ export function bootGame() {
         if (timerFg) timerFg.style.strokeDashoffset = (circumference * (1 - remain / CONFIG.roundMs)).toFixed(2);
         if (remain < 1800) {
           byId('battle-stage')?.classList.add('is-final-rush');
-          const badge = query('.battle__sync');
-          if (badge) badge.textContent = tr('final');
         }
         if (remain <= 0 && !BATTLE.resultReceived) {
           BATTLE.acceptingTaps = false;
@@ -619,7 +610,7 @@ export function bootGame() {
             renderLocalBotResult();
             return;
           }
-          setBattleMeme(tr('serverFinalizing'));
+          setBattleMeme(tr('final'));
         }
       }
       BATTLE.raf = window.requestAnimationFrame(tick);
@@ -680,7 +671,7 @@ export function bootGame() {
       incrementLocalScore(BATTLE.enemySlot, burst);
       const enemySide = sideOf(BATTLE.participants.find(player => player.slot === BATTLE.enemySlot)?.side || oppositeSide(state.side));
       animateHandForSide(enemySide);
-      if (!lowPower || Number(BATTLE.scores[BATTLE.enemySlot] || 0) % 3 === 0) spawnFloater(enemySide, enemySide === 6 ? 'SIX!' : 'SEVEN!');
+      if (!lowPower && Number(BATTLE.scores[BATTLE.enemySlot] || 0) % 5 === 0) spawnFloater(enemySide, enemySide === 6 ? 'SIX!' : 'SEVEN!');
       scheduleLocalBotTap();
     }, waitForStart + delay);
   }
@@ -696,10 +687,10 @@ export function bootGame() {
 
     haptic.light();
     animateHandForSide(state.side);
-    animateCentralDigit();
-    spawnFloater(state.side, Math.random() < 0.55 ? (state.side === 6 ? 'SIX!' : 'SEVEN!') : pick(CHAOS_WORDS));
-    if (!lowPower || BATTLE.tapSeq % CONFIG.scoreFxEveryNthTap === 0) burstDots(state.side, lowPower ? 3 : 5);
-    if (BATTLE.tapSeq % (lowPower ? 8 : 5) === 0) phraseStorm(lowPower ? 2 : 4);
+    if (!lowPower && BATTLE.tapSeq % 4 === 0) animateCentralDigit();
+    if (!lowPower && BATTLE.tapSeq % 5 === 0) spawnFloater(state.side, state.side === 6 ? 'SIX!' : 'SEVEN!');
+    if (!lowPower && BATTLE.tapSeq % 9 === 0) burstDots(state.side, 3);
+    if (!lowPower && BATTLE.tapSeq % 18 === 0) phraseStorm(1);
   }
 
   function handElementForSide(side) {
@@ -707,7 +698,15 @@ export function bootGame() {
   }
 
   function animateHandForSide(side) {
-    restartClass(handElementForSide(side), 'is-tap', 240);
+    const el = handElementForSide(side);
+    const isSix = sideOf(side) === 6;
+    const base = isSix ? 'translate3d(-10%, 0, 0) rotate(-4deg) scaleX(-1)' : 'translate3d(10%, 0, 0) rotate(-4deg)';
+    const up = isSix ? 'translate3d(-10%, -42px, 0) rotate(-4deg) scaleX(-1)' : 'translate3d(10%, -42px, 0) rotate(-4deg)';
+    animateElement(el, [
+      { transform: base },
+      { transform: up },
+      { transform: base },
+    ], { duration: 150 });
   }
 
   function animateCentralDigit() {
@@ -867,7 +866,6 @@ export function bootGame() {
       verdict.textContent = tie ? tr('draw') : myWin ? tr('victory') : tr('defeat');
       verdict.classList.add(tie ? 'is-tie' : myWin ? 'is-win' : 'is-lose');
     }
-    setText('result-subtitle', myScore === 67 ? tr('jackpot') : `${state.side} GANG · ${payload.localBot ? tr('botMatch') : tr('serverTruth')}`);
     setImage('result-side', getDigitImage(state.digitStyle, myWin || tie ? state.side : oppositeSide(state.side)));
     const sideEl = byId('result-side');
     if (sideEl) sideEl.dataset.side = String(myWin || tie ? state.side : oppositeSide(state.side));
@@ -875,7 +873,8 @@ export function bootGame() {
     setText('result-enemy-score', enemyScore);
     setText('result-reward', reward);
     setText('result-callout-title', myScore === 67 ? tr('jackpotTitle') : myWin ? tr('winTitle', state.side) : tie ? tr('drawTitle') : tr('loseTitle'));
-    setText('result-callout-text', payload.localBot ? tr('localResult', matchSuffix) : tr('serverResult', matchSuffix));
+    setText('result-subtitle', myScore === 67 ? tr('jackpot') : `${state.side} GANG`);
+    setText('result-callout-text', tr('battleResult', matchSuffix));
 
     if (payload.player) syncFromServerPlayer(payload.player);
     if (payload.top) TOP = payload.top;
@@ -886,6 +885,7 @@ export function bootGame() {
     if (myWin) haptic.success();
     else if (tie) haptic.warning();
     else haptic.error();
+    startResultHomeCooldown();
     show('result');
   }
 
@@ -1140,7 +1140,11 @@ export function bootGame() {
     queryAll('[data-go-home]').forEach(btn => btn.addEventListener('click', () => show('home')));
     byId('open-profile-top')?.addEventListener('click', () => show('profile'));
     byId('open-shop-top')?.addEventListener('click', () => show('shop'));
-    byId('result-home')?.addEventListener('click', () => show('home'));
+    byId('result-home')?.addEventListener('click', () => {
+      const btn = byId('result-home');
+      if (btn?.disabled) return;
+      show('home');
+    });
     byId('result-shame')?.addEventListener('click', () => shareText(`${state.side} GANG scored ${byId('result-my-score')?.textContent || 0} in 6.7 sec. Beat this.`));
     byId('result-raid')?.addEventListener('click', () => shareText(`${state.side} GANG RAID. ${oppositeSide(state.side)} GANG defend your aura.`));
     byId('ref-invite')?.addEventListener('click', () => {
@@ -1167,6 +1171,34 @@ export function bootGame() {
     }));
 
     document.addEventListener('touchend', preventDoubleTapZoom, { passive: false });
+  }
+
+  function startResultHomeCooldown() {
+    const btn = byId('result-home');
+    if (!btn) return;
+
+    window.clearTimeout(resultHomeCooldownTimer);
+    const label = tr('home');
+    let secondsLeft = Math.ceil(RESULT_HOME_COOLDOWN_MS / 1000);
+
+    btn.disabled = true;
+    btn.classList.add('is-counting-down');
+
+    const tick = () => {
+      if (secondsLeft <= 0) {
+        btn.textContent = label;
+        btn.disabled = false;
+        btn.classList.remove('is-counting-down');
+        resultHomeCooldownTimer = 0;
+        return;
+      }
+
+      btn.textContent = `${label} ${secondsLeft}`;
+      secondsLeft -= 1;
+      resultHomeCooldownTimer = window.setTimeout(tick, 1000);
+    };
+
+    tick();
   }
 
   function preventDoubleTapZoom(event) {
@@ -1230,7 +1262,7 @@ export function bootGame() {
       if (enemy > previousEnemy) {
         const enemySide = sideOf(BATTLE.participants.find(player => player.slot === BATTLE.enemySlot)?.side || oppositeSide(state.side));
         animateHandForSide(enemySide);
-        if (enemy % (lowPower ? 4 : 2) === 0) spawnFloater(enemySide, enemySide === 6 ? 'SIX!' : 'SEVEN!');
+        if (!lowPower && enemy % 5 === 0) spawnFloater(enemySide, enemySide === 6 ? 'SIX!' : 'SEVEN!');
       }
     });
     NET.on('jackpot', message => {

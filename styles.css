@@ -5390,3 +5390,40 @@ body,
 button {
   touch-action: manipulation;
 }
+
+/* Active battle runtime performance mode. */
+body.battle-lean .screen--battle .battle__stage {
+  background: linear-gradient(180deg, #ffffff 0%, #f4f6ff 100%) !important;
+  border-color: rgba(63, 33, 124, 0.16) !important;
+  box-shadow: 0 18px 32px rgba(63, 33, 124, 0.14) !important;
+}
+
+body.battle-lean .screen--battle .battle__ambient,
+body.battle-lean .screen--battle .battle__speedlines,
+body.battle-lean .screen--battle .battle__flash,
+body.battle-lean .screen--battle .floater,
+body.battle-lean .screen--battle .chaos-sticker,
+body.battle-lean .screen--battle .fx-dot {
+  display: none !important;
+}
+
+body.battle-lean .screen--battle .battle__stage,
+body.battle-lean .screen--battle .battle__stage.is-final-rush,
+body.battle-lean .screen--battle .battle__digit,
+body.battle-lean .screen--battle .battle__player-score,
+body.battle-lean .screen--battle .tap-zone,
+body.battle-lean .screen--battle .tap-zone.is-live {
+  animation: none !important;
+}
+
+body.battle-lean .screen--battle .battle__hand {
+  will-change: transform;
+  filter: drop-shadow(0 10px 18px rgba(0,0,0,0.22));
+}
+
+.ghost-btn--result-home:disabled,
+.ghost-btn--result-home.is-counting-down {
+  opacity: .62;
+  cursor: wait;
+  pointer-events: none;
+}

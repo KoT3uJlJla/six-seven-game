@@ -70,12 +70,5 @@ export function showToast(message) {
 }
 
 export function setServerStatus(status, label) {
-  let el = query('.server-pill');
-  if (!el) {
-    el = document.createElement('div');
-    el.className = 'server-pill';
-    document.body.appendChild(el);
-  }
-  el.dataset.state = status;
-  el.textContent = label;
+  query('.server-pill')?.remove();
 }
