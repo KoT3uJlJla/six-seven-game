@@ -154,6 +154,7 @@
   }
 
   const PLAYER_ID = getPlayerId();
+  let battleLeanMode = false;
 
   function installRuntimeCss() {
     const style = document.createElement('style');
@@ -162,9 +163,22 @@
     document.head.appendChild(style);
   }
 
-  const lowPower = /iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4) || matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const lowPower = /iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+    (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4) ||
+    (navigator.deviceMemory && navigator.deviceMemory <= 4) ||
+    matchMedia('(prefers-reduced-motion: reduce)').matches ||
+    (navigator.connection && (navigator.connection.saveData || /(^|\\s)2g\\s/.test(` ${navigator.connection.effectiveType} `)));
   if (lowPower) document.body.classList.add('low-power');
   installRuntimeCss();
+
+  function setBattlePerformanceMode(enabled) {
+    battleLeanMode = Boolean(enabled);
+    document.body.classList.toggle('battle-lean', battleLeanMode);
+  }
+
+  function isBattleFxReduced() {
+    return lowPower || battleLeanMode;
+  }
 
   function getHandImg(id) { return (HAND_CATALOG.find(h => h.id === id) || HAND_CATALOG[0]).img; }
   function getDigitStyle(id) { return DIGIT_CATALOG.find(d => d.id === id) || DIGIT_CATALOG[0]; }
@@ -196,6 +210,7 @@
       if (el) el.hidden = name !== screen;
     });
     document.body.classList.toggle('is-immersive', ['matching', 'battle', 'result'].includes(screen));
+    setBattlePerformanceMode(screen === 'battle');
     qa('.nav-item').forEach(btn => btn.classList.remove('is-active'));
     q(`.nav-item[data-nav="${screen}"]`)?.classList.add('is-active');
     if (screen === 'home') renderHome();
@@ -380,6 +395,7 @@
     acceptingTaps: false,
     tapSeq: 0,
     lastTimerText: '',
+    lastBattlePaintTs: 0,
     raf: 0,
     resultReceived: false,
     jackpotSlots: new Set(),
@@ -656,6 +672,7 @@
       tapSeq: 0,
       resultReceived: false,
       lastTimerText: '',
+      lastBattlePaintTs: 0,
       jackpotSlots: new Set(),
       localBot: Boolean(payload.localBot),
     });
@@ -731,6 +748,7 @@
     if (timerFg) timerFg.setAttribute('stroke-dasharray', circ.toFixed(2));
     const tick = () => {
       if (!BATTLE.running) return;
+      const now = performance.now();
       const serverTime = battleNow();
       if (serverTime < BATTLE.startsAt) {
         const pre = Math.max(0, BATTLE.startsAt - serverTime);
@@ -747,15 +765,19 @@
           const hint = q('.tap-zone__hint');
           if (hint) hint.textContent = t('live');
           setBattleMeme(t('live'));
-          phraseStorm(10);
+          phraseStorm(isBattleFxReduced() ? 4 : 10);
         }
+        const shouldPaint = !isBattleFxReduced() || !BATTLE.lastBattlePaintTs || now - BATTLE.lastBattlePaintTs >= 48;
         const remain = Math.max(0, BATTLE.endsAt - serverTime);
         const text = (remain / 1000).toFixed(1);
-        if (text !== BATTLE.lastTimerText) {
+        if (shouldPaint && text !== BATTLE.lastTimerText) {
+          BATTLE.lastBattlePaintTs = now;
           BATTLE.lastTimerText = text;
           if (timerNum) timerNum.textContent = text;
         }
-        if (timerFg) timerFg.style.strokeDashoffset = (circ * (1 - remain / CONFIG.roundMs)).toFixed(2);
+        if (shouldPaint) {
+          if (timerFg) timerFg.style.strokeDashoffset = (circ * (1 - remain / CONFIG.roundMs)).toFixed(2);
+        }
         if (remain < 1800) {
           $('battle-stage')?.classList.add('is-final-rush');
           if (q('.battle__sync')) q('.battle__sync').textContent = t('final');
@@ -825,8 +847,10 @@
       const burst = Math.random() < (finalRush ? 0.18 : 0.08) ? 2 : 1;
       incrementLocalScore(BATTLE.enemySlot, burst);
       const enemySide = sideOf(BATTLE.participants.find(p => p.slot === BATTLE.enemySlot)?.side || opposite(state.side));
-      animateHandForSide(enemySide);
-      if (!lowPower || Number(BATTLE.scores[BATTLE.enemySlot] || 0) % 3 === 0) {
+      if (!isBattleFxReduced()) {
+        animateHandForSide(enemySide);
+      }
+      if (!isBattleFxReduced() || Number(BATTLE.scores[BATTLE.enemySlot] || 0) % 3 === 0) {
         spawnFloater(enemySide, enemySide === 6 ? 'SIX!' : 'SEVEN!');
       }
       scheduleLocalBotTap();
@@ -875,20 +899,30 @@
 
   function onBattleTap(event) {
     if (!BATTLE.running || !BATTLE.acceptingTaps) return;
+    if (event && event.currentTarget?.id === 'battle-stage' && event.target && typeof event.target.closest === 'function' && event.target.closest('.tap-zone')) {
+      return;
+    }
     const serverTime = battleNow();
     if (serverTime < BATTLE.startsAt || serverTime >= BATTLE.endsAt) return;
     BATTLE.tapSeq += 1;
+    const fxReduced = isBattleFxReduced();
+    const floaterEvery = fxReduced ? 3 : 1;
+    const dotsEvery = fxReduced ? 8 : 5;
     if (BATTLE.localBot) {
       incrementLocalScore(BATTLE.mySlot, 1);
     } else {
       NET.send({ type: 'tap', matchId: BATTLE.matchId, seq: BATTLE.tapSeq, clientTs: Date.now() });
     }
     haptic.light();
-    animateHandForSide(state.side);
-    animateCentralDigit();
-    spawnFloater(state.side, Math.random() < 0.55 ? (state.side === 6 ? 'SIX!' : 'SEVEN!') : pick(CHAOS_WORDS));
-    if (!lowPower || BATTLE.tapSeq % CONFIG.scoreFxEveryNthTap === 0) burstDots(state.side, lowPower ? 3 : 5);
-    if (BATTLE.tapSeq % (lowPower ? 8 : 5) === 0) phraseStorm(lowPower ? 2 : 4);
+    if (!fxReduced) {
+      animateHandForSide(state.side);
+      animateCentralDigit();
+    }
+    if (BATTLE.tapSeq % floaterEvery === 0) {
+      spawnFloater(state.side, Math.random() < 0.55 ? (state.side === 6 ? 'SIX!' : 'SEVEN!') : pick(CHAOS_WORDS));
+    }
+    if (!fxReduced || BATTLE.tapSeq % dotsEvery === 0) burstDots(state.side, fxReduced ? 2 : 5);
+    if (BATTLE.tapSeq % (isBattleFxReduced() ? 8 : 5) === 0) phraseStorm(isBattleFxReduced() ? 2 : 4);
   }
 
   function animateElement(el, keyframes, options) {
@@ -915,7 +949,7 @@
   }
 
   function capFxNodes(layer) {
-    const limit = lowPower ? CONFIG.lowPowerFxNodeLimit : CONFIG.fxNodeLimit;
+    const limit = isBattleFxReduced() ? CONFIG.lowPowerFxNodeLimit : CONFIG.fxNodeLimit;
     while (layer.childElementCount > limit) layer.firstElementChild?.remove();
   }
 
@@ -960,7 +994,7 @@
       setTimeout(() => {
         const side = Math.random() < 0.5 ? 6 : 7;
         spawnFloater(side, pick(CHAOS_WORDS));
-      }, i * (lowPower ? 86 : 46));
+      }, i * (isBattleFxReduced() ? 86 : 46));
     }
   }
 
@@ -980,7 +1014,8 @@
     overlay.className = 'sixty-seven-jackpot';
     overlay.innerHTML = `<div class="sixty-seven-jackpot__box"><div class="sixty-seven-jackpot__badge">${t('jackpot')}</div><div class="sixty-seven-jackpot__main">SIX<br>SEVEN</div></div>`;
     document.body.appendChild(overlay);
-    for (let i = 0; i < (lowPower ? 14 : 28); i += 1) {
+    const stormCount = isBattleFxReduced() ? 14 : 28;
+    for (let i = 0; i < stormCount; i += 1) {
       setTimeout(() => spawnFloater(Math.random() < 0.5 ? 6 : 7, i % 3 ? '67!' : '+67 AURA'), i * 22);
     }
     setTimeout(() => overlay.classList.add('is-out'), 1900);
@@ -1258,14 +1293,21 @@
     updateScoreUI();
     const mine = Number(BATTLE.scores[BATTLE.mySlot] || 0);
     const enemy = Number(BATTLE.scores[BATTLE.enemySlot] || 0);
+    const fxReduced = isBattleFxReduced();
+    const remoteFxStep = fxReduced ? 2 : 1;
+    const enemyFxStep = fxReduced ? 4 : 2;
     if (mine > prevMine) {
-      animateHandForSide(state.side);
+      if (!fxReduced || mine % remoteFxStep === 0) {
+        animateHandForSide(state.side);
+      }
       if (mine === 67) showJackpot(BATTLE.mySlot);
     }
     if (enemy > prevEnemy) {
       const enemySide = sideOf(BATTLE.participants.find(p => p.slot === BATTLE.enemySlot)?.side || opposite(state.side));
-      animateHandForSide(enemySide);
-      if (enemy % (lowPower ? 4 : 2) === 0) spawnFloater(enemySide, enemySide === 6 ? 'SIX!' : 'SEVEN!');
+      if (!fxReduced || enemy % remoteFxStep === 0) {
+        animateHandForSide(enemySide);
+      }
+      if (enemy % enemyFxStep === 0) spawnFloater(enemySide, enemySide === 6 ? 'SIX!' : 'SEVEN!');
     }
   });
   NET.on('jackpot', msg => { if (msg.matchId === BATTLE.matchId) showJackpot(msg.slot); });
