@@ -20,6 +20,8 @@
     fxNodeLimit: 38,
     lowPowerFxNodeLimit: 18,
     scoreFxEveryNthTap: 2,
+    reconnectBaseMs: 900,
+    reconnectMaxMs: 4200,
   };
 
   const haptic = {
@@ -157,7 +159,7 @@
   function installRuntimeCss() {
     const style = document.createElement('style');
     style.textContent = `
-      .server-pill{position:fixed;left:12px;top:calc(10px + var(--safe-top));z-index:30;padding:7px 10px;border-radius:999px;background:rgba(255,255,255,.82);backdrop-filter:blur(10px);box-shadow:0 8px 24px rgba(0,0,0,.10);font:700 10px/1 var(--font-body);letter-spacing:.08em;color:#171827;pointer-events:none}.server-pill[data-state=offline]{color:#c4185a}.server-pill[data-state=online]{color:#1452b8}.home-tap-digit{position:fixed;z-index:26;pointer-events:none;font-family:var(--font-loud);font-size:44px;line-height:1;text-shadow:0 10px 24px rgba(0,0,0,.18);transform:translate(-50%,-50%);animation:homeDigitPop .68s cubic-bezier(.2,.9,.2,1) forwards}.home-tap-digit[data-team="6"]{color:var(--six);filter:drop-shadow(0 0 18px var(--six-glow))}.home-tap-digit[data-team="7"]{color:var(--seven);filter:drop-shadow(0 0 18px var(--seven-glow))}@keyframes homeDigitPop{0%{opacity:0;transform:translate(-50%,-38%) scale(.55) rotate(-8deg)}18%{opacity:1}100%{opacity:0;transform:translate(calc(-50% + var(--dx)),calc(-130% + var(--dy))) scale(1.3) rotate(var(--rot))}}.battle__sync{position:absolute;left:50%;top:84px;transform:translateX(-50%);z-index:5;padding:6px 10px;border-radius:999px;background:rgba(255,255,255,.76);font:900 10px/1 var(--font-body);letter-spacing:.10em;color:#0c0d18;box-shadow:0 8px 24px rgba(0,0,0,.12);pointer-events:none}.fx-floater{position:absolute;z-index:9;pointer-events:none;font-family:var(--font-loud);font-size:20px;line-height:1;white-space:nowrap;will-change:transform,opacity;animation:fxFloat .72s ease-out forwards}.fx-floater[data-side="6"]{color:var(--six);text-shadow:0 0 16px var(--six-glow)}.fx-floater[data-side="7"]{color:var(--seven);text-shadow:0 0 16px var(--seven-glow)}@keyframes fxFloat{0%{opacity:0;transform:translate3d(-50%,0,0) scale(.7) rotate(0)}12%{opacity:1}100%{opacity:0;transform:translate3d(calc(-50% + var(--tx)),var(--ty),0) scale(1.2) rotate(var(--rot))}}.fx-dot{position:absolute;z-index:8;width:8px;height:8px;border-radius:999px;pointer-events:none;will-change:transform,opacity;animation:fxDot .54s ease-out forwards}.fx-dot[data-side="6"]{background:var(--six)}.fx-dot[data-side="7"]{background:var(--seven)}@keyframes fxDot{0%{opacity:.95;transform:translate3d(0,0,0) scale(1)}100%{opacity:0;transform:translate3d(var(--tx),var(--ty),0) scale(.25)}}.sixty-seven-jackpot{position:fixed;inset:0;z-index:60;display:grid;place-items:center;pointer-events:none;background:radial-gradient(circle at 50% 50%,rgba(255,255,255,.86),rgba(255,255,255,.18) 42%,rgba(255,42,109,.20));animation:jackpotIn .22s ease-out both}.sixty-seven-jackpot__box{text-align:center;font-family:var(--font-loud);filter:drop-shadow(0 18px 40px rgba(0,0,0,.24))}.sixty-seven-jackpot__badge{display:inline-block;margin-bottom:10px;padding:8px 12px;border-radius:999px;background:#0c0d18;color:#fff;font:900 12px/1 var(--font-body);letter-spacing:.12em}.sixty-seven-jackpot__main{font-size:clamp(52px,18vw,112px);line-height:.86;background:linear-gradient(90deg,var(--six),var(--gold),var(--seven));-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-stroke:2px rgba(12,13,24,.16)}.sixty-seven-jackpot.is-out{animation:jackpotOut .38s ease-in forwards}@keyframes jackpotIn{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:scale(1)}}@keyframes jackpotOut{to{opacity:0;transform:scale(1.04)}}.low-power .bg-particle:nth-child(n+5),.low-power .spark:nth-child(n+4){display:none}.low-power .bg-noise{opacity:.025}.low-power .battle__ambient,.low-power .battle__speedlines{animation-duration:2.4s!important;opacity:.55}.is-immersive .server-pill{display:none}html,body,#app,.tap-zone,.battle,.home-battle-cta,button{touch-action:manipulation}`;
+      .server-pill{position:fixed;left:12px;top:calc(10px + var(--safe-top));z-index:30;padding:7px 10px;border-radius:999px;background:rgba(255,255,255,.82);backdrop-filter:blur(10px);box-shadow:0 8px 24px rgba(0,0,0,.10);font:700 10px/1 var(--font-body);letter-spacing:.08em;color:#171827;pointer-events:none}.server-pill[data-state=offline]{color:#c4185a}.server-pill[data-state=connecting]{color:#d99500}.server-pill[data-state=online]{color:#1452b8}.home-tap-digit{position:fixed;z-index:26;pointer-events:none;font-family:var(--font-loud);font-size:44px;line-height:1;text-shadow:0 10px 24px rgba(0,0,0,.18);transform:translate(-50%,-50%);animation:homeDigitPop .68s cubic-bezier(.2,.9,.2,1) forwards}.home-tap-digit[data-team="6"]{color:var(--six);filter:drop-shadow(0 0 18px var(--six-glow))}.home-tap-digit[data-team="7"]{color:var(--seven);filter:drop-shadow(0 0 18px var(--seven-glow))}@keyframes homeDigitPop{0%{opacity:0;transform:translate(-50%,-38%) scale(.55) rotate(-8deg)}18%{opacity:1}100%{opacity:0;transform:translate(calc(-50% + var(--dx)),calc(-130% + var(--dy))) scale(1.3) rotate(var(--rot))}}.battle__sync{position:absolute;left:50%;top:84px;transform:translateX(-50%);z-index:5;padding:6px 10px;border-radius:999px;background:rgba(255,255,255,.76);font:900 10px/1 var(--font-body);letter-spacing:.10em;color:#0c0d18;box-shadow:0 8px 24px rgba(0,0,0,.12);pointer-events:none}.fx-floater{position:absolute;z-index:9;pointer-events:none;font-family:var(--font-loud);font-size:20px;line-height:1;white-space:nowrap;will-change:transform,opacity;animation:fxFloat .72s ease-out forwards}.fx-floater[data-side="6"]{color:var(--six);text-shadow:0 0 16px var(--six-glow)}.fx-floater[data-side="7"]{color:var(--seven);text-shadow:0 0 16px var(--seven-glow)}@keyframes fxFloat{0%{opacity:0;transform:translate3d(-50%,0,0) scale(.7) rotate(0)}12%{opacity:1}100%{opacity:0;transform:translate3d(calc(-50% + var(--tx)),var(--ty),0) scale(1.2) rotate(var(--rot))}}.fx-dot{position:absolute;z-index:8;width:8px;height:8px;border-radius:999px;pointer-events:none;will-change:transform,opacity;animation:fxDot .54s ease-out forwards}.fx-dot[data-side="6"]{background:var(--six)}.fx-dot[data-side="7"]{background:var(--seven)}@keyframes fxDot{0%{opacity:.95;transform:translate3d(0,0,0) scale(1)}100%{opacity:0;transform:translate3d(var(--tx),var(--ty),0) scale(.25)}}.sixty-seven-jackpot{position:fixed;inset:0;z-index:60;display:grid;place-items:center;pointer-events:none;background:radial-gradient(circle at 50% 50%,rgba(255,255,255,.86),rgba(255,255,255,.18) 42%,rgba(255,42,109,.20));animation:jackpotIn .22s ease-out both}.sixty-seven-jackpot__box{text-align:center;font-family:var(--font-loud);filter:drop-shadow(0 18px 40px rgba(0,0,0,.24))}.sixty-seven-jackpot__badge{display:inline-block;margin-bottom:10px;padding:8px 12px;border-radius:999px;background:#0c0d18;color:#fff;font:900 12px/1 var(--font-body);letter-spacing:.12em}.sixty-seven-jackpot__main{font-size:clamp(52px,18vw,112px);line-height:.86;background:linear-gradient(90deg,var(--six),var(--gold),var(--seven));-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-stroke:2px rgba(12,13,24,.16)}.sixty-seven-jackpot.is-out{animation:jackpotOut .38s ease-in forwards}@keyframes jackpotIn{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:scale(1)}}@keyframes jackpotOut{to{opacity:0;transform:scale(1.04)}}.low-power .bg-particle:nth-child(n+5),.low-power .spark:nth-child(n+4){display:none}.low-power .bg-noise{opacity:.025}.low-power .battle__ambient,.low-power .battle__speedlines{animation-duration:2.4s!important;opacity:.55}.matching__ring{contain:layout paint;transform:translateZ(0)}.matching__side{transform:translateZ(0);will-change:transform}.ring{will-change:transform,opacity;transform:translateZ(0);backface-visibility:hidden}.low-power .ring{animation:none!important;opacity:.30;transform:scale(1)!important}.low-power .ring--2,.low-power .ring--3{display:none}@media (prefers-reduced-motion: reduce){.ring{animation:none!important;opacity:.32}}.is-immersive .server-pill{display:none}html,body,#app,.tap-zone,.battle,.home-battle-cta,button{touch-action:manipulation}`;
     document.head.appendChild(style);
   }
 
@@ -254,6 +256,7 @@
       this.connected = false;
       this.helloSent = false;
       this.reconnectTimer = 0;
+      this.reconnectAttempts = 0;
       this.serverOffset = 0;
       this.handlers = new Map();
       this.outbox = [];
@@ -269,16 +272,34 @@
       if (handlers) handlers.forEach(fn => fn(message));
     }
 
+    resolveUrl() {
+      const explicit = String(window.SIX_SEVEN_WS_URL || localStorage.getItem('six-seven::ws-url') || '').trim();
+      if (explicit) return explicit;
+      const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const localHost = /^(localhost|127\.0\.0\.1|0\.0\.0\.0)$/i.test(location.hostname);
+      if (localHost && location.port && location.port !== '3000') {
+        return `${protocol}//${location.hostname}:3000/ws`;
+      }
+      return `${protocol}//${location.host}/ws`;
+    }
+
     connect() {
       if (this.ws && [WebSocket.CONNECTING, WebSocket.OPEN].includes(this.ws.readyState)) return;
-      const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-      this.ws = new WebSocket(`${protocol}//${location.host}/ws`);
+      clearTimeout(this.reconnectTimer);
+      setServerStatus('connecting', 'SERVER CONNECTING…');
+      try {
+        this.ws = new WebSocket(this.resolveUrl());
+      } catch {
+        this.handleClose();
+        return;
+      }
       this.ws.addEventListener('open', () => {
         this.connected = true;
         this.helloSent = false;
+        this.reconnectAttempts = 0;
         setServerStatus('online', t('serverOnline'));
         this.sendHello();
-        while (this.outbox.length) this.send(this.outbox.shift());
+        this.flushOutbox();
       });
       this.ws.addEventListener('message', event => {
         try {
@@ -288,16 +309,32 @@
         } catch {}
       });
       this.ws.addEventListener('close', () => this.handleClose());
-      this.ws.addEventListener('error', () => this.handleClose());
+      this.ws.addEventListener('error', () => {
+        if (!this.connected) setServerStatus('offline', t('serverOffline'));
+      });
     }
 
     handleClose() {
-      if (!this.connected && this.reconnectTimer) return;
       this.connected = false;
       this.helloSent = false;
       setServerStatus('offline', t('serverOffline'));
       clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = setTimeout(() => this.connect(), 900);
+      const delay = Math.min(CONFIG.reconnectMaxMs, CONFIG.reconnectBaseMs * Math.max(1, 1 + this.reconnectAttempts));
+      this.reconnectAttempts += 1;
+      this.reconnectTimer = setTimeout(() => this.connect(), delay);
+    }
+
+    flushOutbox() {
+      const pending = this.outbox.splice(0);
+      for (const payload of pending) {
+        if ((payload.type === 'queue' || payload.type === 'cancel_queue') && typeof MATCHING !== 'undefined' && (!MATCHING.active || MATCHING.cancelled)) continue;
+        this.send(payload, { queueIfClosed: false });
+      }
+    }
+
+    dropQueued(types = []) {
+      const set = new Set(types);
+      this.outbox = this.outbox.filter(payload => !set.has(payload.type));
     }
 
     serverNow() { return Date.now() + this.serverOffset; }
@@ -311,12 +348,13 @@
         side: state.side,
         hand: state.hand,
         digit: state.digitStyle,
-      });
+      }, { queueIfClosed: false });
     }
 
-    send(payload) {
+    send(payload, options = {}) {
+      const { queueIfClosed = true } = options;
       if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-        this.outbox.push(payload);
+        if (queueIfClosed) this.outbox.push(payload);
         this.connect();
         return false;
       }
@@ -349,6 +387,7 @@
   let GLOBAL_WAR = { six: 521000, seven: 478000 };
   let matchingTimer = 0;
   let matchingRaf = 0;
+  const MATCHING = { active: false, cancelled: false, serverSearch: false, opponentFound: false, searchEndsAt: 0, lastText: '' };
   let SHOP_TAB = 'hands';
   let heroOtherHandId = 'clown';
 
@@ -511,41 +550,65 @@
 
   function startMatchmaking() {
     clearMatchingTimers();
+    MATCHING.active = true;
+    MATCHING.cancelled = false;
+    MATCHING.serverSearch = false;
+    MATCHING.opponentFound = false;
+    MATCHING.searchEndsAt = Date.now() + CONFIG.matchmakingMs;
+    MATCHING.lastText = '';
     show('matching');
     setImg('matching-side', getDigitUrl(state.digitStyle, state.side));
-    setText('matching-status', t('scan'));
     const sideEl = $('matching-side');
     if (sideEl) sideEl.dataset.side = state.side;
+    renderMatchingCountdown(MATCHING.searchEndsAt, false, { server: false });
+    NET.dropQueued(['queue', 'cancel_queue']);
     NET.connect();
-    NET.send({ type: 'queue', side: state.side, name: state.name, hand: state.hand, digit: state.digitStyle });
+    NET.send({ type: 'queue', side: state.side, name: state.name, hand: state.hand, digit: state.digitStyle }, { queueIfClosed: true });
     haptic.medium();
   }
 
   function clearMatchingTimers() {
-    clearInterval(matchingTimer);
+    clearTimeout(matchingTimer);
     cancelAnimationFrame(matchingRaf);
+    matchingTimer = 0;
+    matchingRaf = 0;
   }
 
-  function renderMatchingCountdown(searchEndsAt, opponentFound) {
-    cancelAnimationFrame(matchingRaf);
+  function renderMatchingCountdown(searchEndsAt, opponentFound, options = {}) {
+    clearMatchingTimers();
+    MATCHING.serverSearch = Boolean(options.server);
+    MATCHING.opponentFound = Boolean(opponentFound);
+    MATCHING.searchEndsAt = Number(searchEndsAt) || MATCHING.searchEndsAt || Date.now() + CONFIG.matchmakingMs;
     const status = $('matching-status');
     const tick = () => {
-      const remain = Math.max(0, searchEndsAt - NET.serverNow());
+      if (!MATCHING.active || MATCHING.cancelled) return;
+      const clockNow = MATCHING.serverSearch ? NET.serverNow() : Date.now();
+      const remain = Math.max(0, MATCHING.searchEndsAt - clockNow);
       const seconds = (remain / 1000).toFixed(1);
-      if (status) status.textContent = `${opponentFound ? t('found') : t('scan')} ${seconds}`;
-      if (remain > 0) matchingRaf = requestAnimationFrame(tick);
+      const prefix = MATCHING.opponentFound ? t('found') : (NET.connected || !MATCHING.serverSearch ? t('scan') : t('serverOffline'));
+      const nextText = `${prefix} ${seconds}`;
+      if (status && MATCHING.lastText !== nextText) {
+        status.textContent = nextText;
+        MATCHING.lastText = nextText;
+      }
+      if (remain > 0) matchingTimer = setTimeout(tick, 100);
     };
     tick();
   }
 
   function cancelMatchmaking() {
+    MATCHING.cancelled = true;
+    MATCHING.active = false;
     clearMatchingTimers();
-    NET.send({ type: 'cancel_queue' });
+    NET.dropQueued(['queue', 'cancel_queue']);
+    NET.send({ type: 'cancel_queue' }, { queueIfClosed: false });
     haptic.warning();
     show('home');
   }
 
   function beginBattle(payload) {
+    if (MATCHING.cancelled) return;
+    MATCHING.active = false;
     clearMatchingTimers();
     Object.assign(BATTLE, {
       matchId: payload.matchId,
@@ -1042,12 +1105,16 @@
     renderGlobalWar();
   });
   NET.on('queue_state', msg => {
-    if (!q('[data-screen="matching"]')?.hidden) {
-      renderMatchingCountdown(Number(msg.searchEndsAt), Boolean(msg.opponentFound));
-      if (msg.opponentFound) setText('matching-status', t('found'));
+    if (MATCHING.active && !MATCHING.cancelled && !q('[data-screen="matching"]')?.hidden) {
+      renderMatchingCountdown(Number(msg.searchEndsAt), Boolean(msg.opponentFound), { server: true });
     }
   });
-  NET.on('queue_cancelled', () => { clearMatchingTimers(); show('home'); });
+  NET.on('queue_cancelled', () => {
+    MATCHING.active = false;
+    MATCHING.cancelled = true;
+    clearMatchingTimers();
+    show('home');
+  });
   NET.on('match_start', beginBattle);
   NET.on('match_live', () => { BATTLE.acceptingTaps = true; });
   NET.on('score_update', msg => {
