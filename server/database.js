@@ -77,8 +77,11 @@ function createEmptyDb() {
 }
 
 export class GameDatabase {
-  constructor(filePath) {
+  constructor(filePath, options = {}) {
     this.filePath = path.resolve(filePath);
+    this.fallbackFilePath = options.fallbackFilePath ? path.resolve(options.fallbackFilePath) : '';
+    this.allowFallback = options.allowFallback !== false;
+    this.usedFallback = false;
     this.data = createEmptyDb();
     this.load();
   }
@@ -116,11 +119,30 @@ export class GameDatabase {
   }
 
   persist() {
-    fs.mkdirSync(path.dirname(this.filePath), { recursive: true });
+    try {
+      this.writeDataFile(this.filePath);
+    } catch (error) {
+      if (!this.canUseFallback(error)) throw error;
+      const blockedPath = this.filePath;
+      this.filePath = this.fallbackFilePath;
+      this.usedFallback = true;
+      console.warn(`Six Seven DB path is not writable (${error.code}: ${blockedPath}); using fallback ${this.filePath}`);
+      this.writeDataFile(this.filePath);
+    }
+  }
+
+  writeDataFile(filePath) {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
     this.data.updatedAt = Date.now();
-    const tmp = `${this.filePath}.${process.pid}.${Date.now()}.tmp`;
+    const tmp = `${filePath}.${process.pid}.${Date.now()}.tmp`;
     fs.writeFileSync(tmp, JSON.stringify(this.data, null, 2));
-    fs.renameSync(tmp, this.filePath);
+    fs.renameSync(tmp, filePath);
+  }
+
+  canUseFallback(error) {
+    if (!this.allowFallback || !this.fallbackFilePath || this.usedFallback) return false;
+    if (path.resolve(this.fallbackFilePath) === path.resolve(this.filePath)) return false;
+    return ['EACCES', 'EPERM', 'EROFS', 'ENOENT'].includes(error?.code);
   }
 
   normalizePlayer(id, player = {}, profile = {}) {

@@ -31,6 +31,7 @@ const telegramBotToken = firstEnv(['TELEGRAM_BOT_TOKEN', 'SIX_SEVEN_BOT_TOKEN', 
 const allowDevAuth = !production && process.env.SIX_SEVEN_DEV_AUTH !== '0';
 const allowFileDb = !production || process.env.SIX_SEVEN_ALLOW_FILE_DB === '1';
 const dbFile = process.env.SIX_SEVEN_DB || `${process.env.SIX_SEVEN_DATA_DIR || '.six-seven-data'}/six-seven-db.json`;
+const dbFallbackFile = process.env.SIX_SEVEN_DB_FALLBACK || `${process.env.TMPDIR || '/tmp'}/six-seven-db.json`;
 
 if (production && !jwtSecret) {
   throw new Error('JWT_SECRET is required in production');
@@ -51,6 +52,7 @@ export const GAME_CONFIG = Object.freeze({
   telegramBotToken,
   telegramAuthMaxAgeSeconds: Number(process.env.TELEGRAM_AUTH_MAX_AGE_SECONDS || 86400),
   allowDevAuth,
+  allowFileDb,
   allowedOrigins: Object.freeze(parseList(process.env.ALLOWED_ORIGINS, DEFAULT_ALLOWED_ORIGINS)),
   serveStatic: process.env.SERVE_STATIC === '1',
   matchmakingMs: 6700,
@@ -62,6 +64,7 @@ export const GAME_CONFIG = Object.freeze({
   botMaxDelayMs: 172,
   botFinalRushMultiplier: 0.78,
   dbFile,
+  dbFallbackFile,
 });
 
 export const RIVAL_NAMES = Object.freeze([

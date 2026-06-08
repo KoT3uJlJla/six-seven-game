@@ -101,9 +101,10 @@ JWT_SECRET=<long random secret>
 TELEGRAM_BOT_TOKEN=<bot token from BotFather>
 ALLOWED_ORIGINS=https://sixseven-a2f.pages.dev
 SIX_SEVEN_ALLOW_FILE_DB=1
+# Optional: only set this if a Render Persistent Disk is mounted at /var/data.
 SIX_SEVEN_DB=/var/data/six-seven-db.json
 ```
 
-In production, the server fails fast without `JWT_SECRET` and `TELEGRAM_BOT_TOKEN`. It also requires `DATABASE_URL` unless file persistence is explicitly enabled with `SIX_SEVEN_ALLOW_FILE_DB=1`. The current implementation uses the file database; keep it outside any public static root.
+In production, the server fails fast without `JWT_SECRET` and `TELEGRAM_BOT_TOKEN`. It also requires `DATABASE_URL` unless file persistence is explicitly enabled with `SIX_SEVEN_ALLOW_FILE_DB=1`. The current implementation uses the file database; keep it outside any public static root. If `SIX_SEVEN_DB` points to an unwritable path, the server falls back to `SIX_SEVEN_DB_FALLBACK` or `/tmp/six-seven-db.json`; that keeps the service online but is ephemeral unless you attach a persistent disk.
 
 Existing Render services configured with `Root Directory: backend` are supported by the lightweight `backend/` shim. It installs no duplicate backend code and starts the canonical root server.
