@@ -13,13 +13,21 @@ function parseList(value, fallback = []) {
   return items.length ? items : [...fallback];
 }
 
+function firstEnv(names) {
+  for (const name of names) {
+    const value = String(process.env[name] || '').trim();
+    if (value) return value;
+  }
+  return '';
+}
+
 function isProductionRuntime() {
   return process.env.NODE_ENV === 'production' || process.env.RENDER === 'true';
 }
 
 const production = isProductionRuntime();
 const jwtSecret = process.env.JWT_SECRET || '';
-const telegramBotToken = process.env.TELEGRAM_BOT_TOKEN || '';
+const telegramBotToken = firstEnv(['TELEGRAM_BOT_TOKEN', 'SIX_SEVEN_BOT_TOKEN', 'BOT_TOKEN', 'TG_BOT_TOKEN']);
 const allowDevAuth = !production && process.env.SIX_SEVEN_DEV_AUTH !== '0';
 const allowFileDb = !production || process.env.SIX_SEVEN_ALLOW_FILE_DB === '1';
 const dbFile = process.env.SIX_SEVEN_DB || `${process.env.SIX_SEVEN_DATA_DIR || '.six-seven-data'}/six-seven-db.json`;
@@ -29,7 +37,7 @@ if (production && !jwtSecret) {
 }
 
 if (production && !telegramBotToken) {
-  throw new Error('TELEGRAM_BOT_TOKEN is required in production');
+  throw new Error('TELEGRAM_BOT_TOKEN is required in production. Accepted env names: TELEGRAM_BOT_TOKEN, SIX_SEVEN_BOT_TOKEN, BOT_TOKEN, TG_BOT_TOKEN');
 }
 
 if (production && !process.env.DATABASE_URL && !allowFileDb) {
