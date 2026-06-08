@@ -17,10 +17,24 @@ export default {
     ].join('');
 
     let html = await asset.text();
-    html = html.replace(/<script>window\.SIX_SEVEN_API_BASE=.*?<\/script>\s*/s, '');
-    html = html.includes('</head>')
-      ? html.replace('</head>', `  ${configScript}\n</head>`)
-      : `${configScript}${html}`;
+
+    const apiScriptRegex = /<script>window\.SIX_SEVEN_API_BASE=.*?<\/script>/;
+    const botScriptRegex = /<script>window\.SIX_SEVEN_BOT_USERNAME=.*?<\/script>/;
+    const appScriptRegex = /<script>window\.SIX_SEVEN_APP_NAME=.*?<\/script>/;
+
+    if (html.includes('window.SIX_SEVEN_API_BASE=')) {
+      html = html.replace(apiScriptRegex, `<script>window.SIX_SEVEN_API_BASE=${JSON.stringify(apiBase)};</script>`);
+      html = html.replace(botScriptRegex, `<script>window.SIX_SEVEN_BOT_USERNAME=${JSON.stringify(botUsername)};</script>`);
+      html = html.replace(appScriptRegex, `<script>window.SIX_SEVEN_APP_NAME=${JSON.stringify(appName)};</script>`);
+    } else if (html.includes('</head>')) {
+      html = html.replace('</head>', `  ${configScript}\n</head>`);
+    } else {
+      html = `${configScript}${html}`;
+    }
+
+    if (!html.includes('release-image-rescue.js')) {
+      html = html.replace('</body>', '  <script src="release-image-rescue.js"></script>\n</body>');
+    }
 
     return new Response(html, {
       status: asset.status,
