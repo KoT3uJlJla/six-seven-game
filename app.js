@@ -22,6 +22,8 @@
     scoreFxEveryNthTap: 2,
     matchFallbackGraceMs: 650,
   };
+  const RESULT_HOME_COOLDOWN_MS = 3000;
+  const SHOW_SERVER_STATUS_BADGE = false;
 
   const haptic = {
     light:  () => tg?.HapticFeedback?.impactOccurred?.('light'),
@@ -126,6 +128,7 @@
   state.lang = detectClientLang();
   if (!state.referrals.code) state.referrals.code = makeReferralCode();
   saveState();
+  let resultHomeCooldownTimer = 0;
 
   function makeReferralCode() {
     const id = tg?.initDataUnsafe?.user?.id;
@@ -259,6 +262,7 @@
   }
 
   function setServerStatus(status, label) {
+    if (!SHOW_SERVER_STATUS_BADGE) return;
     const el = ensureServerPill();
     el.dataset.state = status;
     el.textContent = label;
@@ -700,7 +704,6 @@
     if (stage) {
       stage.classList.remove('is-final-rush');
       stage.classList.add('is-playing');
-      ensureBattleSyncBadge(stage, payload.bot ? 'BOT AFTER 6.7 SEC' : t('serverTruth'));
     }
     const tapHint = q('.tap-zone__hint');
     if (tapHint) tapHint.textContent = t('ready');
@@ -721,16 +724,6 @@
     } else {
       left.src = enemyImg; right.src = myImg;
     }
-  }
-
-  function ensureBattleSyncBadge(stage, text) {
-    let badge = q('.battle__sync');
-    if (!badge) {
-      badge = document.createElement('div');
-      badge.className = 'battle__sync';
-      stage.appendChild(badge);
-    }
-    badge.textContent = text;
   }
 
   function setBattleMeme(text) {
@@ -765,7 +758,7 @@
           const hint = q('.tap-zone__hint');
           if (hint) hint.textContent = t('live');
           setBattleMeme(t('live'));
-          phraseStorm(isBattleFxReduced() ? 4 : 10);
+          phraseStorm(isBattleFxReduced() ? 1 : 6);
         }
         const shouldPaint = !isBattleFxReduced() || !BATTLE.lastBattlePaintTs || now - BATTLE.lastBattlePaintTs >= 48;
         const remain = Math.max(0, BATTLE.endsAt - serverTime);
@@ -780,7 +773,6 @@
         }
         if (remain < 1800) {
           $('battle-stage')?.classList.add('is-final-rush');
-          if (q('.battle__sync')) q('.battle__sync').textContent = t('final');
         }
         if (remain <= 0 && !BATTLE.resultReceived) {
           BATTLE.acceptingTaps = false;
@@ -847,10 +839,8 @@
       const burst = Math.random() < (finalRush ? 0.18 : 0.08) ? 2 : 1;
       incrementLocalScore(BATTLE.enemySlot, burst);
       const enemySide = sideOf(BATTLE.participants.find(p => p.slot === BATTLE.enemySlot)?.side || opposite(state.side));
-      if (!isBattleFxReduced()) {
-        animateHandForSide(enemySide);
-      }
-      if (!isBattleFxReduced() || Number(BATTLE.scores[BATTLE.enemySlot] || 0) % 3 === 0) {
+      animateHandForSide(enemySide);
+      if (!isBattleFxReduced() && Number(BATTLE.scores[BATTLE.enemySlot] || 0) % 3 === 0) {
         spawnFloater(enemySide, enemySide === 6 ? 'SIX!' : 'SEVEN!');
       }
       scheduleLocalBotTap();
@@ -906,23 +896,21 @@
     if (serverTime < BATTLE.startsAt || serverTime >= BATTLE.endsAt) return;
     BATTLE.tapSeq += 1;
     const fxReduced = isBattleFxReduced();
-    const floaterEvery = fxReduced ? 3 : 1;
-    const dotsEvery = fxReduced ? 8 : 5;
+    const floaterEvery = fxReduced ? 6 : 1;
+    const dotsEvery = fxReduced ? 12 : 5;
     if (BATTLE.localBot) {
       incrementLocalScore(BATTLE.mySlot, 1);
     } else {
       NET.send({ type: 'tap', matchId: BATTLE.matchId, seq: BATTLE.tapSeq, clientTs: Date.now() });
     }
     haptic.light();
-    if (!fxReduced) {
-      animateHandForSide(state.side);
-      animateCentralDigit();
-    }
+    animateHandForSide(state.side);
+    if (!fxReduced) animateCentralDigit();
     if (BATTLE.tapSeq % floaterEvery === 0) {
-      spawnFloater(state.side, Math.random() < 0.55 ? (state.side === 6 ? 'SIX!' : 'SEVEN!') : pick(CHAOS_WORDS));
+      spawnFloater(state.side, state.side === 6 ? 'SIX!' : 'SEVEN!');
     }
-    if (!fxReduced || BATTLE.tapSeq % dotsEvery === 0) burstDots(state.side, fxReduced ? 2 : 5);
-    if (BATTLE.tapSeq % (isBattleFxReduced() ? 8 : 5) === 0) phraseStorm(isBattleFxReduced() ? 2 : 4);
+    if (!fxReduced && BATTLE.tapSeq % dotsEvery === 0) burstDots(state.side, 3);
+    if (BATTLE.tapSeq % (fxReduced ? 18 : 4) === 0) phraseStorm(fxReduced ? 1 : 3);
   }
 
   function animateElement(el, keyframes, options) {
@@ -935,11 +923,13 @@
   function animateHandForSide(side) {
     const el = handElForSide(side);
     if (!el) return;
-    const direction = sideOf(side) === 6 ? -1 : 1;
+    const isSix = sideOf(side) === 6;
+    const base = isSix ? 'translate3d(-10%, 0, 0) rotate(-4deg) scaleX(-1)' : 'translate3d(10%, 0, 0) rotate(-4deg)';
+    const up = isSix ? 'translate3d(-10%, -42px, 0) rotate(-4deg) scaleX(-1)' : 'translate3d(10%, -42px, 0) rotate(-4deg)';
     animateElement(el, [
-      { transform: `translate3d(0,0,0) rotate(0deg) scale(1)` },
-      { transform: `translate3d(${direction * 5}px,10px,0) rotate(${direction * 4}deg) scale(.98)` },
-      { transform: `translate3d(0,0,0) rotate(0deg) scale(1)` },
+      { transform: `${base} scale(1)` },
+      { transform: `${up} scale(0.98)` },
+      { transform: `${base} scale(1)` },
     ], { duration: 150 });
   }
 
@@ -1043,7 +1033,7 @@
       verdict.textContent = tie ? t('draw') : myWin ? t('victory') : t('defeat');
       verdict.classList.add(tie ? 'is-tie' : myWin ? 'is-win' : 'is-lose');
     }
-    setText('result-subtitle', myScore === 67 ? t('jackpot') : `${state.side} GANG · ${payload.localBot ? 'BOT MATCH' : t('serverTruth')}`);
+    setText('result-subtitle', myScore === 67 ? t('jackpot') : `${state.side} GANG`);
     setImg('result-side', getDigitUrl(state.digitStyle, myWin || tie ? state.side : opposite(state.side)));
     const sideEl = $('result-side');
     if (sideEl) sideEl.dataset.side = myWin || tie ? state.side : opposite(state.side);
@@ -1060,6 +1050,7 @@
     setText('result-shame', myScore === 67 ? 'SHARE JACKPOT' : `SHAME A ${opposite(state.side)}`);
     if (myScore === 67) setTimeout(() => showJackpot(BATTLE.mySlot), 160);
     if (myWin) haptic.success(); else if (tie) haptic.warning(); else haptic.error();
+    startResultHomeCooldown();
     show('result');
   }
 
@@ -1238,7 +1229,11 @@
     qa('[data-go-home]').forEach(btn => btn.addEventListener('click', () => show('home')));
     $('open-profile-top')?.addEventListener('click', () => show('profile'));
     $('open-shop-top')?.addEventListener('click', () => show('shop'));
-    $('result-home')?.addEventListener('click', () => show('home'));
+    $('result-home')?.addEventListener('click', () => {
+      const btn = $('result-home');
+      if (btn?.disabled) return;
+      show('home');
+    });
     $('result-shame')?.addEventListener('click', () => shareText(`${state.side} GANG scored ${$('result-my-score')?.textContent || 0} in 6.7 sec. Beat this.`));
     $('result-raid')?.addEventListener('click', () => shareText(`${state.side} GANG RAID. ${opposite(state.side)} GANG defend your aura.`));
     $('ref-invite')?.addEventListener('click', () => { state.referrals.sent += 1; saveState(); renderReferralCard(); shareText(`I picked ${state.side} GANG. Join or accept aura debt.`, referralLink()); });
@@ -1252,6 +1247,29 @@
       renderShop();
     }));
     qa('[data-top-tab]').forEach(btn => btn.addEventListener('click', () => { qa('[data-top-tab]').forEach(x => x.classList.toggle('is-active', x === btn)); renderTop(); }));
+  }
+
+  function startResultHomeCooldown() {
+    const btn = $('result-home');
+    if (!btn) return;
+    clearTimeout(resultHomeCooldownTimer);
+    resultHomeCooldownTimer = 0;
+    const baseLabel = t('home');
+    let secondsLeft = Math.ceil(RESULT_HOME_COOLDOWN_MS / 1000);
+    btn.disabled = true;
+    btn.classList.add('is-counting-down');
+    const tick = () => {
+      if (secondsLeft <= 0) {
+        btn.textContent = baseLabel;
+        btn.disabled = false;
+        btn.classList.remove('is-counting-down');
+        return;
+      }
+      btn.textContent = `${baseLabel} ${secondsLeft}`;
+      secondsLeft -= 1;
+      resultHomeCooldownTimer = setTimeout(tick, 1000);
+    };
+    tick();
   }
 
   let lastTouchEnd = 0;
@@ -1294,19 +1312,14 @@
     const mine = Number(BATTLE.scores[BATTLE.mySlot] || 0);
     const enemy = Number(BATTLE.scores[BATTLE.enemySlot] || 0);
     const fxReduced = isBattleFxReduced();
-    const remoteFxStep = fxReduced ? 2 : 1;
     const enemyFxStep = fxReduced ? 4 : 2;
     if (mine > prevMine) {
-      if (!fxReduced || mine % remoteFxStep === 0) {
-        animateHandForSide(state.side);
-      }
+      animateHandForSide(state.side);
       if (mine === 67) showJackpot(BATTLE.mySlot);
     }
     if (enemy > prevEnemy) {
       const enemySide = sideOf(BATTLE.participants.find(p => p.slot === BATTLE.enemySlot)?.side || opposite(state.side));
-      if (!fxReduced || enemy % remoteFxStep === 0) {
-        animateHandForSide(enemySide);
-      }
+      animateHandForSide(enemySide);
       if (enemy % enemyFxStep === 0) spawnFloater(enemySide, enemySide === 6 ? 'SIX!' : 'SEVEN!');
     }
   });

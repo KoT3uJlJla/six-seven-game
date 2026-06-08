@@ -5129,7 +5129,6 @@ body.battle-lean .screen--battle .battle__speedlines {
 }
 
 body.battle-lean .screen--battle .battle__digit,
-body.battle-lean .screen--battle .battle__hand,
 body.battle-lean .screen--battle .battle__player,
 body.battle-lean .screen--battle .battle__timer,
 body.battle-lean .screen--battle .battle__flash,
@@ -5143,7 +5142,6 @@ body.battle-lean .screen--battle .tap-zone.is-live {
   animation: none !important;
 }
 
-body.battle-lean .battle__sync,
 body.battle-lean .screen--battle .battle__player[data-side="6"],
 body.battle-lean .screen--battle .battle__player[data-side="7"] {
   box-shadow: none !important;
